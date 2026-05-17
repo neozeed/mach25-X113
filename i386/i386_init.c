@@ -94,6 +94,9 @@
 
 int		loadpt;
 
+int	mb_magic;
+int	mb_info;
+
 vm_size_t	mem_size;
 vm_size_t	rawmem_size;
 vm_offset_t	first_addr;

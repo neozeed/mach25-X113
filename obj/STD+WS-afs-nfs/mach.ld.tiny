@@ -1,0 +1,31 @@
+ENTRY(_start)
+
+VIRT = 0xC0100000;
+PHYS = 0x00100000;
+
+SECTIONS
+{
+  . = VIRT;
+
+  .text : AT(PHYS) {
+      *(.multiboot)
+      *(.text*)
+      _etext = .;
+      *(.rodata*)
+      *(.data*)
+      _edata = .;
+      *(.bss*)
+      *(COMMON)
+      _end = .;
+  }
+
+  /DISCARD/ : {
+      *(.comment)
+      *(.note*)
+      *(.eh_frame)
+      *(.stab*)
+      *(.debug*)
+      *(.symtab)
+      *(.strtab)
+  }
+}

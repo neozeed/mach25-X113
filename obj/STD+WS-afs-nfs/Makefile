@@ -547,9 +547,11 @@ kgmon_off:
 #  configuration.
 #
 
-FPU_ASM = arith.o dcode.o divmul.o lipsq.o reg.o remsc.o \
-	round.o status.o store.o subadd.o trans.o
+# a.out
+#FPU_ASM = arith.o dcode.o divmul.o lipsq.o reg.o remsc.o \
+#	round.o status.o store.o subadd.o trans.o
 
+# elf
 FPU_ASM =
 
 
@@ -955,7 +957,7 @@ locore.o: assym.s locore.s ${LOCORE_HEADS}
 	| sed -e 's/_ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
 	a386 -o $*.o $*.i
-	rm locore.tmp locore.i
+	rm locore.tmp locore.i 
 
 ###############################################################################
 #END	Machine dependent Makefile fragment for the i386
@@ -978,6 +980,15 @@ C_RULE_4=
 #  file and then copied to the *vmunix.swap name to trigger the full
 #  kernel link using this default rule.
 #
+mb_header.o:
+	cpp ../../i386at\mb_header.s mb_header.i
+	a386 mb_header.i -o mb_header.o
+	@rm -f mb_header.i
+
+mb_start.o:
+	cpp -I../.. ../../i386at\mb_start.s -o mb_start.i
+	a386 mb_start.i -o mb_start.o
+	@rm -f mb_start.i
 
 .swap.sys:
 	@/bin/sh $(SOURCE_DIR)/conf/newvers.sh \
@@ -989,7 +1000,7 @@ C_RULE_4=
 #	a.out
 #	${LD} ${LDFLAGS} -x ${LDOBJS} vers.o $*.swap ${LIBS}
 #	elf
-	${LD} -o a.out -e _pstart ${LDOBJS} vers.o $*.swap ${LIBS}
+	${LD} -o a.out -m elf_i386 -T mach.ld ${LDOBJS} vers.o $*.swap ${LIBS}
 	@echo rearranging symbols
 #	symorder symbols.sort a.out
 	@size a.out

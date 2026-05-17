@@ -102,7 +102,6 @@ DATA(df_stack)
 
 Entry(pstart)
 
-#if 0	/* going multiboot */
 #ifndef	iPSC2
 	/ Retrieve the parameters passed from boot
 	pop	%eax
@@ -140,12 +139,6 @@ Entry(pstart)
 	and	$MASK, %ebx
 	mov	%eax, (%ebx)
 #endif	wheeze
-#else	/ cruft
-
-	/* Multiboot: eax = magic, ebx = multiboot_info* */
-	mov %eax, EXT(mb_magic)
-	mov %ebx, EXT(mb_info)
-#endif / cruft
 
 	/ Turn off clock interrupt.
 	/ This is due to a bug in p0init which enables interrupt
@@ -157,19 +150,19 @@ Entry(pstart)
 
 	/ Rearrange GDT
 	mov	$EXT(gdt), %eax
-	/ and	$MASK, %eax
+	and	$MASK, %eax
 
 	mov	$GDTLIM, %ecx
 
 	mov	$GDTdscr, %ebx
-	/ and	$MASK, %ebx
+	and	$MASK, %ebx
 	movw	%cx, (%ebx)
 
 	call	munge_table
 
 	/ Rearrange IDT
 	mov	$EXT(idt), %eax
-	/ and	$MASK, %eax
+	and	$MASK, %eax
 
 	mov	$IDTLIM, %ecx
 
@@ -177,7 +170,7 @@ Entry(pstart)
 
 	/ Rearrange call gate for system call (scall_dscr)
 	mov	$EXT(scall_dscr), %eax
-	/ and	$MASK, %eax
+	and	$MASK, %eax
 
 	mov	$1, %ecx
 
@@ -185,7 +178,7 @@ Entry(pstart)
 
 	/ Rearrange call gate for signal return  (sigret_dscr)
 	mov	$EXT(sigret_dscr), %eax
-	/ and	$MASK, %eax
+	and	$MASK, %eax
 
 	mov	$1, %ecx
 
@@ -193,17 +186,17 @@ Entry(pstart)
 
 	/ Fix up the 1st, 3 giga and last entries in the page directory
 	mov	$EXT(kpde), %ebx
-	/ and	$MASK, %ebx
+	and	$MASK, %ebx
 
 	mov	$EXT(kpte), %eax	
 	and	$0xffff000, %eax
 	or	$0x1, %eax
 
-	mov	%eax, (%ebx)		/ map 0–4MB identity
+	mov	%eax, (%ebx)
 	mov	%eax, 3072(%ebx)	/ 3 giga -- C0000000
 
 	mov	$EXT(kpde), %edx
-	/ and	$MASK, %edx
+	and	$MASK, %edx
 
 	/ Load IDTR
 	mov	$IDTdscr, %eax
@@ -226,9 +219,7 @@ Entry(pstart)
 	mov	%eax, %cr0
 
 
-	/ ljmp	$KTSSSEL, $0x0
-	/ To simplify debugging, you can even temporarily skip the TSS far jump and just fall through into C
-	call EXT(i386_init)
+	ljmp	$KTSSSEL, $0x0
 
 / *********************************************************************
 /	munge_table:
