@@ -479,7 +479,7 @@ SYS_RULE_4=
 #
 #  Things to be done just before exiting
 #
-EXIT_RULE=${MD} -f -d `ls *.${MD_SUFFIX}`
+EXIT_RULE=#${MD} -f -d `ls *.${MD_SUFFIX}`
 
 #
 # Compilation rules to generate .o from .b
@@ -929,7 +929,7 @@ SYS_RULE_2=-@
 SYS_RULE_3=-@
 SYS_RULE_4=-@
 C_RULE_2_P=true
-MD=md
+MD=false #md
 
 #LIBS_P=-lc_p
 
@@ -1043,11 +1043,15 @@ all: ${LOAD}
 #  need to be built in a special manner.
 #
 
-genassym.o: $(SOURCE_DIR)/machine/genassym.c
-	${KCC} -c ${COPTS_P} ${VOLATILE} $(SOURCE_DIR)/machine/genassym.c
+genassym.exe: $(SOURCE_DIR)/machine/genassym.c
+	echo compile with native cc
+	uudecode old/genassym.txt
+#	${KCC} -c ${COPTS_P} ${VOLATILE} $(SOURCE_DIR)/machine/genassym.c
 
-assym.s: genassym.o
-	cp old/assym.s .
+assym.s: genassym.exe
+	genassym.exe > assym.s
+	rm -f genassym.exe
+#	cp old/assym.s .
 #	${KCC} genassym.o
 #	./a.out > assym.s; rm -f a.out
 
@@ -1136,7 +1140,7 @@ migdebugfiles :: $(MACH_DEBUG_DEFSFILES) $(MACH_DEBUG_MKFILE)
 #
 
 Makefile: *.${MD_SUFFIX}
-	${MD} -f -d `ls *.${MD_SUFFIX}`
+#	${MD} -f -d `ls *.${MD_SUFFIX}`
 
 .EXIT:
 	${EXIT_RULE}
