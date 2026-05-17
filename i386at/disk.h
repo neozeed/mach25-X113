@@ -132,18 +132,18 @@ typedef struct alt_info altinfo_t;
 #define V_VALID         0x200           /* Partition is valid to use */
 
 /* driver ioctl() commands */
-#define V_CONFIG        _IOW(v,1,union io_arg) 	/* Configure Drive */
-#define V_REMOUNT       _IO(v,2)    		/* Remount Drive */
-#define V_ADDBAD        _IOW(v,3,union io_arg) 	/* Add Bad Sector */
-#define V_GETPARMS      _IOR(v,4,struct disk_parms)   /* Get drive/partition parameters */
-#define V_FORMAT        _IOW(v,5,union io_arg) 	/* Format track(s) */
-#define V_PDLOC		_IOR(v,6,int)		/* Ask driver where pdinfo is on disk */
+#define V_CONFIG        _IOW('v',1,union io_arg) 	/* Configure Drive */
+#define V_REMOUNT       _IO('v',2)    		/* Remount Drive */
+#define V_ADDBAD        _IOW('v',3,union io_arg) 	/* Add Bad Sector */
+#define V_GETPARMS      _IOR('v',4,struct disk_parms)   /* Get drive/partition parameters */
+#define V_FORMAT        _IOW('v',5,union io_arg) 	/* Format track(s) */
+#define V_PDLOC		_IOR('v',6,int)		/* Ask driver where pdinfo is on disk */
 
-#define V_RDABS		_IOW(v,10,struct absio)	/* Read a sector at an absolute addr */
-#define V_WRABS		_IOW(v,11,struct absio)	/* Write a sector to absolute addr */
-#define V_VERIFY	_IOWR(v,12,union vfy_io)/* Read verify sector(s) */
-#define V_XFORMAT	_IO(v,13)		/* Selectively mark sectors as bad */
-#define V_SETPARMS	_IOW(v,14,int)		/* Set drivers parameters */
+#define V_RDABS		_IOW('v',10,struct absio)	/* Read a sector at an absolute addr */
+#define V_WRABS		_IOW('v',11,struct absio)	/* Write a sector to absolute addr */
+#define V_VERIFY	_IOWR('v',12,union vfy_io)/* Read verify sector(s) */
+#define V_XFORMAT	_IO('v',13)		/* Selectively mark sectors as bad */
+#define V_SETPARMS	_IOW('v',14,int)		/* Set drivers parameters */
 
 
 

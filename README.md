@@ -2,6 +2,7 @@ my goal is cross building Mach from a Win32/a.out tool chain.
 
 Currently not building:
 
+* assym.s
 * fd.o
 * hd.o
 * kd.o

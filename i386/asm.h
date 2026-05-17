@@ -55,9 +55,16 @@
 #define EXT(x) x
 #define LCL(x) ./**/x
 
+#if OLD_ASM
 #define LB(x,n) ./**/x
 #define LBb(x,n) ./**/x
 #define LBf(x,n) ./**/x
+#else
+#define LB(x,n)    .L##x##_##n
+#define LBb(x,n)   .L##x##_##n##b
+#define LBf(x,n)   .L##x##_##n##f
+#endif
+
 
 #define	SVC lcall $7,$0
 
@@ -77,9 +84,16 @@
 #define EXT(x) _/**/x
 #define	LCL(x)	x
 
+#if OLD_ASM
 #define LB(x,n) n
 #define LBb(x,n) n/**/b
 #define LBf(x,n) n/**/f
+#else
+#define LB(x,n)    .L##x##_##n
+#define LBb(x,n)   .L##x##_##n##b
+#define LBf(x,n)   .L##x##_##n##f
+#endif
+
 
 #define SVC .byte 0x9a; .long 0; .word 0x7
 

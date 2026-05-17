@@ -136,7 +136,8 @@ fpnoextflt(r0ptr)
 
 	if (fp_kind == FP_SW)		/* software emulation */
 #if	NFP > 0
-		e80387(r0ptr);		/* call the emulator */
+		panic("Sorry need a real 80387, fpu emulation is binary a.out :(");		/* sorry we only do hardware fpu */
+/*		e80387(r0ptr);		/* call the emulator */
 /* HARDWARE ONLY!	*/
 #else	NFP > 0
 		fppanic(r0ptr);

@@ -594,13 +594,13 @@ extern int spltty();
  * KDSETBELL - Turns the bell on or off.
  */
 
-#define KDGKBENT	_IOWR(k, 1, struct kbentry) /* get keybd entry */
+#define KDGKBENT	_IOWR('k', 1, struct kbentry) /* get keybd entry */
 
-#define KDSKBENT	_IOW(k, 2, struct kbentry) /* set keybd entry */
+#define KDSKBENT	_IOW('k', 2, struct kbentry) /* set keybd entry */
 
-#define KDGSTATE	_IOR(k, 3, int)	/* get keybd state */
+#define KDGSTATE	_IOR('k', 3, int)	/* get keybd state */
 
-#define KDSETBELL	_IOW(k, 4, int)	/* turn bell on or off */
+#define KDSETBELL	_IOW('k', 4, int)	/* turn bell on or off */
 #	define	KD_BELLON	1
 #	define	KD_BELLOFF	0
 
@@ -639,11 +639,11 @@ struct kbentry {
 extern	int	kb_mode;
 #endif
 
-#define KDSKBDMODE	_IOW(K, 1, int)	/* set keyboard mode */
+#define KDSKBDMODE	_IOW('K', 1, int)	/* set keyboard mode */
 #define KB_EVENT	1
 #define KB_ASCII	2
 
-#define KDGKBDTYPE	_IOR(K, 2, int)	/* get keyboard type */
+#define KDGKBDTYPE	_IOR('K', 2, int)	/* get keyboard type */
 #define KB_VANILLAKB	0
 
 struct X_kdb {
@@ -651,8 +651,8 @@ struct X_kdb {
 	u_int size;
 };
 
-#define K_X_KDB_ENTER	_IOW(K, 16, struct X_kdb)
-#define K_X_KDB_EXIT	_IOW(K, 17, struct X_kdb)
+#define K_X_KDB_ENTER	_IOW('K', 16, struct X_kdb)
+#define K_X_KDB_EXIT	_IOW('K', 17, struct X_kdb)
 
 #define K_X_IN		0x01000000
 #define K_X_OUT		0x02000000

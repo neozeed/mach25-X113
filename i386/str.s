@@ -149,7 +149,7 @@ ENTRY(strncpy)
 	jne	1f			/ n exhausted
 	jecxz	1f
 
-	xorl	%al, %al
+	xorb	%al, %al
 0:	stosb
 	loop	0b			/ zero fill
 

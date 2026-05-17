@@ -2,3 +2,4 @@ del /F btptes.o tables.o  locore.o cmu_syscalls.o init_main.o init_sysent.o kern
 @del /F vmunix.sys vmunix
 @del /F assym.s locore.s copy_user.i FPU_start.i FPU_end.i gcc.i ntoh.i str.i
 @del /F swapgeneric.o genassym.o ioconf.c vers.c
+@del kd.i genassym.exe kdasm.i

@@ -61,7 +61,7 @@ ENTRY(FAULT_ERROR)
 #endif	MACH_KDB
 	movl	-4(%ebp),%esi
 	movl	-8(%ebp),%edi
-LB(in_kdb,0):
+LBf(in_kdb,0):
 	movl	-12(%ebp),%eax
 	movl	%ebp,%esp
 	popl 	%ebp

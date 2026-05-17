@@ -547,6 +547,11 @@ kgmon_off:
 #  configuration.
 #
 
+FPU_ASM = arith.o dcode.o divmul.o lipsq.o reg.o remsc.o \
+	round.o status.o store.o subadd.o trans.o
+
+FPU_ASM =
+
 
 OBJS=cmu_syscalls.o init_main.o init_sysent.o kern_acct.o kern_clock.o \
 	kern_descrip.o kern_exec.o kern_exit.o kern_fork.o kern_mman.o \
@@ -580,8 +585,7 @@ OBJS=cmu_syscalls.o init_main.o init_sysent.o kern_acct.o kern_clock.o \
 	ioconf.o access.o bits.o command.o expr.o format.o input.o \
 	kdb_main.o message.o opset.o output.o pcs.o print.o runpcs.o \
 	setup.o stack.o sym.o tbls.o utls.o clock.o copy_user.o fpsup.o \
-	FPU_start.o arith.o dcode.o divmul.o lipsq.o reg.o remsc.o \
-	round.o status.o store.o subadd.o trans.o FPU_end.o gcc.o \
+	FPU_start.o $(FPU_ASM) FPU_end.o gcc.o \
 	i386_init.o pic.o pit.o in_cksum.o kdb.o machdep.o mem.o ntoh.o \
 	pcb.o phys.o pmap.o sys_machdep.o str.o trap.o ufs_machdep.o \
 	vm_machdep.o vx_exception.o autoconf.o com.o lpr.o \
@@ -948,6 +952,7 @@ locore.o: assym.s locore.s ${LOCORE_HEADS}
 	cat assym.s ../../machine/start.s  ../../machine/locore.s ../../machine/cswitch.s >locore.tmp
 	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER -DLOCORE locore.tmp \
 	| sed -e 's/ _ / _/g' | sed -e 's/	_ / _/g' \
+	| sed -e 's/_ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
 	a386 -o $*.o $*.i
 	rm locore.tmp locore.i
@@ -981,7 +986,10 @@ C_RULE_4=
 	@${CC} -c vers.c
 	@rm -f $* $*.sys
 	@echo loading $*.sys
-	${LD} ${LDFLAGS} -x ${LDOBJS} vers.o $*.swap ${LIBS}
+#	a.out
+#	${LD} ${LDFLAGS} -x ${LDOBJS} vers.o $*.swap ${LIBS}
+#	elf
+	${LD} -o a.out -e _pstart ${LDOBJS} vers.o $*.swap ${LIBS}
 	@echo rearranging symbols
 #	symorder symbols.sort a.out
 	@size a.out
@@ -1050,7 +1058,7 @@ genassym.exe: $(SOURCE_DIR)/machine/genassym.c
 
 assym.s: genassym.exe
 	genassym.exe > assym.s
-	rm -f genassym.exe
+#	rm -f genassym.exe
 #	cp old/assym.s .
 #	${KCC} genassym.o
 #	./a.out > assym.s; rm -f a.out
@@ -1164,10 +1172,11 @@ checkout:	${USE}
 #
 
 clean:
-	@for f in ${LOAD}; do echo rm -f $$f $$f.* && rm -f $$f $$f.*; done
-	rm -f eddep tags *.o locore.i \
-		$(MIG_ALL_FILES) \
-		errs linterrs makelinks *.log *LOG* ${CLEAN_EXTRA}
+	clean.cmd
+#	@for f in ${LOAD}; do echo rm -f $$f $$f.* && rm -f $$f $$f.*; done
+#	rm -f eddep tags *.o locore.i \
+#		$(MIG_ALL_FILES) \
+#		errs linterrs makelinks *.log *LOG* ${CLEAN_EXTRA}
 
 
 #
@@ -2246,6 +2255,7 @@ clock.o: $(SOURCE_DIR)/i386/clock.c
 copy_user.o: $(SOURCE_DIR)/i386/copy_user.s
 	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
 	| sed -e 's/ _ / _/g' \
+	| sed -e 's/_ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
 	a386 -o $*.o $*.i
 
@@ -2381,6 +2391,7 @@ sys_machdep.o: $(SOURCE_DIR)/i386/sys_machdep.c
 str.o: $(SOURCE_DIR)/i386/str.s
 	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
 	| sed -e 's/ _ / _/g' \
+	| sed -e 's/_ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
 	a386 -o $*.o $*.i
 
@@ -2445,15 +2456,14 @@ conf.o: $(SOURCE_DIR)/i386at/conf.c
 
 
 fd.o: $(SOURCE_DIR)/i386at/fd.c
-#	${C_RULE_1A_D}$(SOURCE_DIR)/i386at/${C_RULE_1B_D}
-	uudecode old/$*.txt
+	${C_RULE_1A_D}$(SOURCE_DIR)/i386at/${C_RULE_1B_D}
 
 
 
 
 hd.o: $(SOURCE_DIR)/i386at/hd.c
-#	${C_RULE_1A}$(SOURCE_DIR)/i386at/${C_RULE_1B}
-	uudecode old/$*.txt
+	${C_RULE_1A}$(SOURCE_DIR)/i386at/${C_RULE_1B}
+
 
 
 iopl.o: $(SOURCE_DIR)/i386at/iopl.c
@@ -2487,19 +2497,21 @@ if_ns8390.o: $(SOURCE_DIR)/i386at/if_ns8390.c
 
 
 kd.o: $(SOURCE_DIR)/i386at/kd.c
-#	${C_RULE_1A}$(SOURCE_DIR)/i386at/${C_RULE_1B}
-	uudecode old/$*.txt
-
+	${C_RULE_1A}$(SOURCE_DIR)/i386at/${C_RULE_1B}
 
 
 
 kdasm.o: $(SOURCE_DIR)/i386at/kdasm.s
+	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
+	| sed -e 's/ _ / _/g' \
+	| sed -e 's/ :/:/g' > $*.i
+	a386 $*.i -o $*.o
 #	${S_RULE_1A}$(SOURCE_DIR)/i386at/${S_RULE_1B}
-	uudecode old/$*.txt
+
 
 kd_event.o: $(SOURCE_DIR)/i386at/kd_event.c
-#	${C_RULE_1A}$(SOURCE_DIR)/i386at/${C_RULE_1B}
-	uudecode old/$*.txt
+	${C_RULE_1A}$(SOURCE_DIR)/i386at/${C_RULE_1B}
+
 
 
 kd_mouse.o: $(SOURCE_DIR)/i386at/kd_mouse.c
