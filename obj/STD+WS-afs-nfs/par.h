@@ -1,2 +1,1 @@
-/* turn this off */
-#define NPAR 0
+#define NPAR 1

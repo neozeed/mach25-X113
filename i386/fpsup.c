@@ -136,16 +136,15 @@ fpnoextflt(r0ptr)
 
 	if (fp_kind == FP_SW)		/* software emulation */
 #if	NFP > 0
-		panic("Sorry need a real 80387, fpu emulation is binary a.out :(");		/* sorry we only do hardware fpu */
 /*		e80387(r0ptr);		/* call the emulator */
 /* HARDWARE ONLY!	*/
-#else	NFP > 0
+/*#else	NFP > 0	*/
 		fppanic(r0ptr);
-#endif	NFP > 0
+#endif	NFP > 0	
 }
 
-#if	NFP > 0
-#else	NFP > 0
+/*#if	NFP > 0
+#else	NFP > 0*/
 fppanic(r0ptr)
 int *r0ptr;
 {
@@ -174,7 +173,7 @@ int *r0ptr;
 	u.u_cursig = 0;
 	psig();		/* Bye */
 }
-#endif	NFP > 0
+/*#endif	NFP > 0*/
 
 /*
 ** fpextovrflt

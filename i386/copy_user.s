@@ -57,11 +57,11 @@
 ENTRY(FAULT_ERROR)
 #if	MACH_KDB
 	cmpl	$1, EXT(kdbtrapok)
-	je	LBf(in_kdb,0)
+	je	LB(in_kdb,0)
 #endif	MACH_KDB
 	movl	-4(%ebp),%esi
 	movl	-8(%ebp),%edi
-LBf(in_kdb,0):
+LB(in_kdb,0):
 	movl	-12(%ebp),%eax
 	movl	%ebp,%esp
 	popl 	%ebp

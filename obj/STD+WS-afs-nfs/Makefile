@@ -386,7 +386,7 @@ GCC2FLAGS = #--ffreestanding --fno-builtin --fno-builtin-function
 #
 COPTS_P=${DEPENDS} ${ALLOPTS}
 COPTS=	${COPTS_P} ${GCC2FLAGS}
-CFLAGS=	-g -O ${COPTS}
+CFLAGS=	-O2 -g  ${COPTS}
 
 #
 #  Common assembly flags
@@ -2269,7 +2269,7 @@ utls.o: $(SOURCE_DIR)/i386/kdb/utls.c
 
 
 
-btptes.o: $(SOURCE_DIR)/i386/btptes.s
+btptes.o: $(SOURCE_DIR)/i386/btptes.c
 #	a386 $(SOURCE_DIR)/i386/btptes.s -o btptes.o
 	${C_RULE_1A}$(SOURCE_DIR)/i386/${C_RULE_1B}
 

@@ -1,2 +1,2 @@
-/* turn off the npc586 */
+/*disable this	*/
 #define NPC586 0

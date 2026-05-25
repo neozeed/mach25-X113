@@ -1,2 +1,1 @@
-/* turn off line printer */
-#define NLPR 0
+#define NLPR 1

@@ -92,11 +92,7 @@
 #include <mach/vm_prot.h>
 #include <vm/vm_page.h>
 
-
-extern int		loadpt;
-
-int	mb_magic;
-int	mb_info;
+int		loadpt;
 
 vm_size_t	mem_size;
 vm_size_t	rawmem_size;
@@ -109,7 +105,7 @@ vm_offset_t	virtual_avail, virtual_end;
 /* parameters passed from bootstrap loader */
 char end;
 int cnvmem = 0;		/* must be in .data section */
-int extmem = 15;
+int extmem = 0;
 #ifdef	wheeze
 #else	wheeze
 char *esym = &end;
@@ -178,16 +174,7 @@ i386_init()
  *
  *	bzero((caddr_t)&edata,(unsigned)(&end - &edata));
  */
-
  	bclear((caddr_t)&edata,(unsigned)(&end - &edata));
-
-#if 0
-these are patched by the loader now
-    /* Hardcode boot parameters - GRUB multiboot not yet wired up */
-    loadpt = 0x100000;          /* kernel at 1MB physical */
-    cnvmem = 640;               /* 640KB conventional */
-    extmem = 14 * 1024;         /* 14MB extended = 15MB total */
-#endif
 
 /*
  * Initialize the pic prior to any possible call to an spl.
