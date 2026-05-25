@@ -253,6 +253,7 @@ bad:
 	printf("no suitable root\n");
 	asm("hlt");
 found:
+#if 0
 	rootdev = (gc->gc_makedev)(gc->gc_root, unit, slice);
 
 	bcopy(name, strA, i);
@@ -260,6 +261,16 @@ found:
 	strA[i] = 0;
 
 	printf("root on %s\n", strA);
+#else
+    rootdev = (gc->gc_makedev)(gc->gc_root, unit, slice);
+    str = strA;
+    *str++ = gc->gc_name[0];
+    *str++ = gc->gc_name[1];
+    *str++ = '0' + unit;
+    *str++ = 'a' + slice;
+    *str   = 0;
+    printf("root on %s\n", strA);
+#endif
 }
 
 gets(cp)

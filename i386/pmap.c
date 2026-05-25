@@ -447,7 +447,10 @@ int		ptes_per_vm_page;	/* number of 80386 ptes required to map
 					   one VM page. */
 
 extern char end;
-extern pt_entry_t	kpde[], kpte[];
+/*extern pt_entry_t	kpde[], kpte[];*/
+extern long kpde[];
+extern long kpte[];
+
 
 void pmap_remove_range();	/* forward */
 #if	NCPUS > 1

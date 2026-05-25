@@ -1,288 +1,329 @@
 /* 
  * Mach Operating System
  * Copyright (c) 1989 Carnegie-Mellon University
- * All rights reserved.  The CMU software License Agreement specifies
- * the terms and conditions for use and redistribution.
- */
-/* 
- * HISTORY
- * $Log:	start.s,v $
- * Revision 2.2.1.7  90/07/27  11:24:54  rvb
- * 	Fix Intel Copyright as per B. Davies authorization.
- * 	[90/07/27            rvb]
- * 
- * Revision 2.2.1.6  90/07/10  11:42:46  rvb
- * 	iPSC2: boot does not push everything that AT386 does.
- * 	[90/06/16            rvb]
- * 
- * Revision 2.2.1.5  90/02/28  15:48:34  rvb
- * 	Revision 1.3  90/02/26  17:54:39  kupfer
- * 	Synch with CMU.  h/w workarounds ifdef'd by h/w type.
- * 
- * Revision 2.2.1.3  90/01/08  13:26:41  rvb
- *	Add Intel copyright.
- *	[90/01/08            rvb]
- *   
- * Revision 2.2.1.2  89/12/21  17:14:55  rvb
- *	Pick up esym for a.out
- *    
- * Revision 2.2.1.1  89/10/22  11:31:35  rvb
- * 	New a.out and coff compatible .s files.
- * 	[89/10/16            rvb]
- * 
- * Revision 2.2  89/09/25  12:32:48  rvb
- * 	File was provided by Intel 9/18/89.
- * 	[89/09/23            rvb]
- * 
+ * All rights reserved.
+ *
+ * start.s -- ELF higher-half port of Mach 2.6 i386 startup
+ *
+ * Physical load address:  0x00100000  (1MB, GRUB multiboot)
+ * Virtual link address:   0xC0100000  (3GB higher-half)
+ *
+ * Boot sequence:
+ *   1. GRUB jumps to _pstart (physical, paging OFF, flat GRUB segments)
+ *   2. Fill kpte: 3072 PTEs mapping physical 0x00000000-0x00BFFFFF (12MB)
+ *   3. Set up kpde: PDE[0,1,2] identity + PDE[768,769,770] higher-half
+ *   4. Munge GDT/IDT/gates from Mach init format to hardware format
+ *   5. Load GDTR, IDTR with physical addresses
+ *   6. Load CR3 (physical kpde), enable paging via CR0
+ *   7. Far jump to high_start (flushes pipeline, now at virtual 0xC01xxxxx)
+ *   8. Reload segment registers from our GDT
+ *   9. Set up kernel stack
+ *  10. Hardware task switch via KTSSSEL into kernel TSS -> i386_init
+ *
+ * Address translation before paging is on:
+ *   Virtual 0xCxxxxxxx -> physical: addr & 0x0FFFFFFF  (strips top nibble)
+ *   This works because KV = 0xC0000000 and MASK = 0x0FFFFFFF.
  */
 
 #include <i386/asm.h>
 #include <mach/vm_param.h>
 
-/*
-  Copyright 1988, 1989 by Intel Corporation, Santa Clara, California.
+/* -----------------------------------------------------------------------
+ * Constants
+ * --------------------------------------------------------------------- */
+        .set    GDTLIM,  (8*96-1)        /* GDT limit: 96 descriptors      */
+        .set    IDTLIM,  (8*256-1)       /* IDT limit: 256 descriptors      */
+        .set    PAGEBIT, 0x80000000      /* CR0.PG bit                      */
+        .set    MASK,    0x0FFFFFFF      /* virt->phys: strip top nibble    */
+        .set    KV,      0xC0000000      /* kernel virtual base             */
+        .set    KCODE,   0x158            /* kernel code segment selector    */
+        .set    KDATA,   0x160            /* kernel data segment selector    */
 
-		All Rights Reserved
+/* -----------------------------------------------------------------------
+ * Globals needed by C code
+ * --------------------------------------------------------------------- */
+        .globl  EXT(cnvmem)
+        .globl  EXT(extmem)
+        .globl  EXT(boottype)
+        .globl  EXT(boothowto)
+        .globl  EXT(esym)
+        .globl  EXT(pstart)
+        .globl  EXT(gdt)
+        .globl  EXT(idt)
+        .globl  EXT(kpde)
+        .globl  EXT(kpte)
+        .globl  EXT(scall_dscr)
+        .globl  EXT(sigret_dscr)
+        .globl  high_start
 
-Permission to use, copy, modify, and distribute this software and
-its documentation for any purpose and without fee is hereby
-granted, provided that the above copyright notice appears in all
-copies and that both the copyright notice and this permission notice
-appear in supporting documentation, and that the name of Intel
-not be used in advertising or publicity pertaining to distribution
-of the software without specific, written prior permission.
-
-INTEL DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE
-INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS,
-IN NO EVENT SHALL INTEL BE LIABLE FOR ANY SPECIAL, INDIRECT, OR
-CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN ACTION OF CONTRACT,
-NEGLIGENCE, OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION
-WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-*/
-	
-#ifndef	iPSC2
-/ these are not needed for iPSC2
-	.globl	EXT(cnvmem)
-	.globl	EXT(extmem)
-	.globl	EXT(boottype)
-	.globl	EXT(boothowto)
-#endif	iPSC2
-
-#ifdef	wheeze
-#else	wheeze
-	.globl	EXT(esym)
-#endif	wheeze
-	.globl	EXT(pstart)
-	.globl	EXT(gdt)
-	.globl	EXT(idt)
-	.globl	EXT(kpde)
-	.globl	EXT(kpte)
-	.globl	EXT(scall_dscr)
-	.globl	EXT(sigret_dscr)
-
-#ifdef	wheeze
-	.set	GDTLIM, [8\*96-1]
-	.set	IDTLIM, [8\*256-1]
-#else	wheeze
-	.set	GDTLIM, (Times(8,96)-1)
-	.set	IDTLIM, (Times(8,256)-1)
-#endif	wheeze
-	.set    GDTSZ,   96
-	.set    IDTSZ,   256
-	.set	PAGEBIT, 0x80000000
-	.set	MASK,	 0x0FFFFFFF	/ mask the top nibble
-	.set	KV,	 0xC0000000
-
-	.text
+/* -----------------------------------------------------------------------
+ * Kernel stacks -- two separate 4096-byte regions in .text so they land
+ * at known low physical addresses.
+ * Labels are at the BOTTOM; add 4092 to get a usable top pointer.
+ * --------------------------------------------------------------------- */
+        .text
 DATA(intstack)
+        .space  4096
 DATA(df_stack)
-/	.space	KERNEL_STACK_SIZE
-	.set .,. + 4096
+        .space  4096
+
+/* -----------------------------------------------------------------------
+ * GDTR / IDTR pseudo-descriptors (6 bytes: 2-byte limit + 4-byte base).
+ * Bases are pre-converted to physical addresses (KV already subtracted)
+ * so they are valid before paging is enabled.
+ * --------------------------------------------------------------------- */
+        .data
+        .align  4
+
+GDTdscr:
+        .word   GDTLIM
+        .long   EXT(gdt) - KV           /* physical address of GDT         */
+
+IDTdscr:
+        .word   IDTLIM
+        .long   EXT(idt) - KV           /* physical address of IDT         */
+
+/* -----------------------------------------------------------------------
+ * _pstart -- kernel entry point from GRUB
+ *   On entry: 32-bit protected mode, paging OFF, interrupts OFF (hopefully)
+ *   GRUB's flat 4GB code/data segments are still live.
+ * --------------------------------------------------------------------- */
+        .text
+        .globl  _pstart
 
 Entry(pstart)
 
-#if 0	/* going multiboot */
-#ifndef	iPSC2
-	/ Retrieve the parameters passed from boot
-	pop	%eax
-	mov	$EXT(boottype), %ebx
-	and	$MASK, %ebx
-	mov	%eax, (%ebx)
+        /* ----------------------------------------------------------------
+         * Disable timer IRQ.  picinit() hasn't run yet; a timer interrupt
+         * before that causes an unhandled trap and triple-fault.
+         * ---------------------------------------------------------------- */
+        mov     $0x21, %edx
+        INB
+        orb     $1, %al
+        OUTB
 
-	pop	%eax
-	mov	$EXT(extmem), %ebx
-	and	$MASK, %ebx
-	mov	%eax, (%ebx)
+        /* ----------------------------------------------------------------
+         * Fill kpte with 3072 PTEs, mapping physical 0x00000000-0x00BFFFFF
+         * (12MB -- enough to cover the full kernel image + BSS).
+         * Each PTE: bits[31:12] = page frame number, bits[1:0] = Present+RW
+         * ---------------------------------------------------------------- */
+        mov     $EXT(kpte), %edi
+        and     $MASK, %edi             /* physical address of kpte         */
 
-	pop	%eax
-	mov	$EXT(cnvmem), %ebx
-	and	$MASK, %ebx
-	mov	%eax, (%ebx)
-#endif	iPSC2
+        xor     %eax, %eax             /* start at physical page 0         */
+        mov     $3072, %ecx            /* 3072 pages x 4KB = 12MB          */
 
-#ifdef	OLD_BOOT
-	xorl	%eax, %eax
-	movb	$0, %al
-#else	OLD_BOOT
-	pop	%eax
-#endif	OLD_BOOT
-	mov	$EXT(boothowto), %ebx
-	and	$MASK, %ebx
-	mov	%eax, (%ebx)
+fill_pte:
+        mov     %eax, %edx
+        or      $0x003, %edx           /* Present + Read/Write             */
+        mov     %edx, (%edi)
+        add     $4, %edi               /* next PTE slot                    */
+        add     $0x1000, %eax          /* next page frame                  */
+        loop    fill_pte
 
-#ifdef	wheeze
-#else	wheeze
-/*	leal	EXT(end), %eax*/
-	pop	%eax
-	orl	$KV, %eax
-	mov	$EXT(esym), %ebx
-	and	$MASK, %ebx
-	mov	%eax, (%ebx)
-#endif	wheeze
-#else	/ cruft
+        /* ----------------------------------------------------------------
+         * Set up kpde (page directory).
+         * We need two windows into the same 12MB physical range:
+         *   Identity map: PDE[0,1,2]     -> physical 0x00000000-0x00BFFFFF
+         *   Higher half:  PDE[768,769,770]-> virtual  0xC0000000-0xC0BFFFFF
+         *
+         * PDE index for 0xC0000000 = 0xC0000000 >> 22 = 768
+         * Each PDE entry = physical base of a 4KB page table | flags
+         * kpte is 3 consecutive page tables, each 4096 bytes apart.
+         * ---------------------------------------------------------------- */
+        mov     $EXT(kpde), %ebx
+        and     $MASK, %ebx             /* physical address of kpde         */
 
-	/* Multiboot: eax = magic, ebx = multiboot_info* */
-	mov %eax, EXT(mb_magic)
-	mov %ebx, EXT(mb_info)
-#endif / cruft
+        /* First page table (kpte+0): covers 0x00000000-0x003FFFFF */
+        mov     $EXT(kpte), %eax
+        and     $MASK, %eax
+        and     $0xfffff000, %eax       /* page-align                       */
+        or      $0x003, %eax           /* Present + R/W                    */
+        movl    %eax, 0(%ebx)          /* PDE[0]   identity                */
+        movl    %eax, 3072(%ebx)       /* PDE[768] higher-half             */
 
-	/ Turn off clock interrupt.
-	/ This is due to a bug in p0init which enables interrupt
-	/ before picinit.
-	mov	$0x21, %edx		/ XXX - magic number
-	INB
-	orb	$1, %al			/ XXX - magic number
-	OUTB
+        /* Second page table (kpte+4096): covers 0x00400000-0x007FFFFF */
+        add     $4096, %eax
+        movl    %eax, 4(%ebx)          /* PDE[1]                           */
+        movl    %eax, 3076(%ebx)       /* PDE[769]                         */
 
-	/ Rearrange GDT
-	mov	$EXT(gdt), %eax
-	/ and	$MASK, %eax
+        /* Third page table (kpte+8192): covers 0x00800000-0x00BFFFFF */
+        add     $4096, %eax
+        movl    %eax, 8(%ebx)          /* PDE[2]                           */
+        movl    %eax, 3080(%ebx)       /* PDE[770]                         */
 
-	mov	$GDTLIM, %ecx
+        /* ----------------------------------------------------------------
+         * Munge descriptor tables from Mach's compile-time init format
+         * into the i386 hardware runtime format.
+         * munge_table(%eax = phys base, %ecx = size in bytes)
+         * NOTE: munge_table clobbers %eax, %ebx, %ecx, %edx -- do NOT
+         * load CR3-destined EDX until after all munge_table calls.
+         * ---------------------------------------------------------------- */
 
-	mov	$GDTdscr, %ebx
-	/ and	$MASK, %ebx
-	movw	%cx, (%ebx)
+        /* Patch GDTdscr limit field before munging */
+        mov     $GDTdscr, %ebx
+        and     $MASK, %ebx
+        mov     $GDTLIM, %ecx
+        movw    %cx, (%ebx)
 
-	call	munge_table
+        /* Munge GDT */
+        mov     $EXT(gdt), %eax
+        and     $MASK, %eax
+        mov     $GDTLIM, %ecx
+        call    munge_table
 
-	/ Rearrange IDT
-	mov	$EXT(idt), %eax
-	/ and	$MASK, %eax
+        /* Munge IDT */
+        mov     $EXT(idt), %eax
+        and     $MASK, %eax
+        mov     $IDTLIM, %ecx
+        call    munge_table
 
-	mov	$IDTLIM, %ecx
+        /* Munge system call gate */
+        mov     $EXT(scall_dscr), %eax
+        and     $MASK, %eax
+        mov     $1, %ecx
+        call    munge_table
 
-	call	munge_table
+        /* Munge signal return gate */
+        mov     $EXT(sigret_dscr), %eax
+        and     $MASK, %eax
+        mov     $1, %ecx
+        call    munge_table
 
-	/ Rearrange call gate for system call (scall_dscr)
-	mov	$EXT(scall_dscr), %eax
-	/ and	$MASK, %eax
+        /* ----------------------------------------------------------------
+         * Load descriptor tables.
+         * Paging is still OFF; IDTdscr/GDTdscr already hold physical addrs.
+         * ---------------------------------------------------------------- */
+        mov     $IDTdscr, %eax
+        and     $MASK, %eax
+        lidt    (%eax)
 
-	mov	$1, %ecx
+        mov     $GDTdscr, %eax
+        and     $MASK, %eax
+        lgdt    (%eax)
 
-	call	munge_table
+        /* ----------------------------------------------------------------
+         * Enable paging.
+         * Load CR3 FIRST (Intel manual requirement), then set CR0.PG.
+         * EDX is loaded HERE, after all munge_table calls that clobber it.
+         * ---------------------------------------------------------------- */
+        mov     $EXT(kpde), %edx
+        and     $MASK, %edx            /* physical address of kpde -> CR3  */
+        mov     %edx, %cr3
 
-	/ Rearrange call gate for signal return  (sigret_dscr)
-	mov	$EXT(sigret_dscr), %eax
-	/ and	$MASK, %eax
+        mov     %cr0, %eax
+        or      $PAGEBIT, %eax
+        mov     %eax, %cr0             /* paging ON                        */
 
-	mov	$1, %ecx
+        /* ----------------------------------------------------------------
+         * Far jump to flush the prefetch queue.
+         * After this, EIP is a virtual 0xC01xxxxx address.
+         * The identity map (PDE[0]) keeps the next few physical instructions
+         * reachable until we land in high_start.
+         * ---------------------------------------------------------------- */
+        ljmp    $KCODE, $high_start
 
-	call	munge_table
+/* -----------------------------------------------------------------------
+ * high_start
+ *   Paging is now ON.  We are executing at virtual 0xC01xxxxx.
+ *   Reload all segment registers from our freshly-munged GDT.
+ * --------------------------------------------------------------------- */
+high_start:
 
-	/ Fix up the 1st, 3 giga and last entries in the page directory
-	mov	$EXT(kpde), %ebx
-	/ and	$MASK, %ebx
+        /* Reload data segments from our GDT (KDATA = 0x10) */
+        mov     $KDATA, %ax
+        mov     %ax, %ds
+        mov     %ax, %es
+        mov     %ax, %ss
+        mov     %ax, %fs
+        mov     %ax, %gs
 
-	mov	$EXT(kpte), %eax	
-	and	$0xffff000, %eax
-	or	$0x1, %eax
+        /* Set up kernel stack explicitly - do NOT trust TSS or GRUB */
+        mov     $EXT(intstack), %esp
+        add     $4092, %esp
+        xor     %ebp, %ebp
 
-	mov	%eax, (%ebx)		/ map 0–4MB identity
-	mov	%eax, 3072(%ebx)	/ 3 giga -- C0000000
+        /* Load TR so privilege-change stack switching works later */
+        mov     $KTSSSEL, %ax
+        ltr     %ax
 
-	mov	$EXT(kpde), %edx
-	/ and	$MASK, %edx
+        /* ----------------------------------------------------------------
+         * Hardware task switch into the kernel TSS.
+         *
+         * KTSSSEL must be the GDT selector for the kernel TSS descriptor.
+         * The TSS must have valid ESP0/SS0, CR3, and EIP fields pointing
+         * at i386_init before this executes (set up in tables.c/pcb.c).
+         *
+         * If you need to bypass this for bring-up, replace with:
+         *   call  EXT(i386_init)
+         * ---------------------------------------------------------------- */
+#if 0
+        ljmp    $KTSSSEL, $0x0
+#else
+        /* Call i386_init directly on our own stack */
+        /* Call i386_init via register to ensure virtual address */
+/*        mov     $EXT(i386_init), %eax	
+        call    *%eax	*/
+	call  EXT(vstart)
+#endif
 
-	/ Load IDTR
-	mov	$IDTdscr, %eax
-	and	$MASK, %eax
+        /* Should never reach here */
+        jmp     hang
 
-	lidt	(%eax)
-
-	/ Load GDTR
-	mov	$GDTdscr, %eax
-	and	$MASK, %eax
-
-	lgdt	(%eax)
-
-	/ flip cr3 before you flip cr0
-	mov	%edx, %cr3
-
-	/ turn PG on
-	mov	%cr0, %eax
-	or	$PAGEBIT, %eax
-	mov	%eax, %cr0
-
-
-	/ ljmp	$KTSSSEL, $0x0
-	/ To simplify debugging, you can even temporarily skip the TSS far jump and just fall through into C
-	call EXT(i386_init)
-
-/ *********************************************************************
-/	munge_table:
-/		This procedure will 'munge' a descriptor table to
-/		change it from initialized format to runtime format.
-/		Assumes:
-/			%eax -- contains the base address of table.
-/			%ecx -- contains size of table.
-/ *********************************************************************
-
+/* -----------------------------------------------------------------------
+ * munge_table
+ *   Walk a descriptor table and reformat each 8-byte entry from Mach's
+ *   compile-time layout into the i386 hardware layout.
+ *
+ *   Entry:  %eax = physical base of table
+ *           %ecx = size of table in bytes (limit value)
+ *   Clobbers: %eax, %ebx, %ecx, %edx
+ * --------------------------------------------------------------------- */
 munge_table:
-	mov	%eax, %ebx
-	add	%ebx, %ecx
-moretable:
-	cmp	%ebx, %ecx
-	jl	donetable		/ Have we done every descriptor??
-	movb	7(%ebx), %al	/ Find the byte containing the type field
-	testb	$0x10, %al	/ See if this descriptor is a segment
-	jne	notagate
-	testb	$0x04, %al	/ See if this destriptor is a gate
-	je	notagate
-				/ Rearrange a gate descriptor.
-	movw	6(%ebx), %eax	/ Type (etc.) lifted out
-	movw	4(%ebx), %edx	/ Selector lifted out.
-	movw	%eax, 4(%ebx)	/ Type (etc.) put back
-	movw	2(%ebx), %eax	/ Grab Offset 16..31
-	movw	%edx, 2(%ebx)	/ Put back Selector
-	movw	%eax, 6(%ebx)	/ Offset 16..31 now in right place
-	jmp	descdone
+        mov     %eax, %ebx
+        add     %ebx, %ecx             /* %ecx = one-past-end address      */
 
-notagate:			/ Rearrange a non gate descriptor.
-	movw	4(%ebx), %edx	/ Limit 0..15 lifted out
-	movb	%al, 5(%ebx)	/ type (etc.) put back
-	movw	2(%ebx), %eax	/ Grab Base 16..31
-	movb	%al, 4(%ebx)	/ put back Base 16..23
-	movb	%ah, 7(%ebx)	/ put back Base 24..32
-	movw	(%ebx), %eax	/ Get Base 0..15
-	movw	%eax, 2(%ebx)	/ Base 0..15 now in right place
-	movw	%edx, (%ebx)	/ Limit 0..15 in its proper place
+moretable:
+        cmp     %ebx, %ecx
+        jl      donetable
+
+        movb    7(%ebx), %al           /* fetch type byte                  */
+        testb   $0x10, %al            /* segment descriptor?              */
+        jne     notagate
+        testb   $0x04, %al            /* gate descriptor?                 */
+        je      notagate
+
+        /* Gate descriptor: reorder offset[0:15], selector, type, offset[16:31] */
+        movw    6(%ebx), %ax           /* type word                        */
+        movw    4(%ebx), %dx           /* selector                         */
+        movw    %ax, 4(%ebx)           /* type -> [4:5]                    */
+        movw    2(%ebx), %ax           /* offset[16:31]                    */
+        movw    %dx, 2(%ebx)           /* selector -> [2:3]                */
+        movw    %ax, 6(%ebx)           /* offset[16:31] -> [6:7]           */
+        jmp     descdone
+
+notagate:
+        /* Segment descriptor: reorder base/limit fields */
+        movw    4(%ebx), %dx           /* limit[0:15]                      */
+        movb    %al, 5(%ebx)           /* type -> [5]                      */
+        movw    2(%ebx), %ax           /* base[16:31]                      */
+        movb    %al, 4(%ebx)           /* base[16:23] -> [4]               */
+        movb    %ah, 7(%ebx)           /* base[24:31] -> [7]               */
+        movw    (%ebx), %ax            /* base[0:15]                       */
+        movw    %ax, 2(%ebx)           /* base[0:15] -> [2:3]              */
+        movw    %dx, (%ebx)            /* limit[0:15] -> [0:1]             */
 
 descdone:
-	addw	$8, %ebx	/ Go for the next descriptor
-	jmp	moretable
+        add     $8, %ebx              /* advance to next descriptor        */
+        jmp     moretable
 
 donetable:
-	ret
+        ret
 
-	.align	8
-GDTdscr:
-	Value  GDTLIM
-	.long	EXT(gdt)
-
-	.align	8
-IDTdscr:
-	Value	IDTLIM
-	.long	EXT(idt)
-
+/* -----------------------------------------------------------------------
+ * hang -- used if early boot fails catastrophically
+ * --------------------------------------------------------------------- */
+hang:
+        cli
+        hlt
+        jmp     hang

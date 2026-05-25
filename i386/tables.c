@@ -57,7 +57,8 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <mach/i386/vm_param.h>
 #include <i386/pcb.h>
 
-pt_entry_t kpde[];	/* kernel's page descriptor table */
+/*pt_entry_t kpde[];	/* kernel's page descriptor table */
+extern long kpde[];
 
 
 extern trap_handler(), system_call(), interrupt(), vstart(), sig_clean();

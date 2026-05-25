@@ -352,7 +352,8 @@ default: all
 #
 #  Compilation components
 #
-CC=	gcc
+#CC=	gcc
+CC=	gcc-258_old
 CPP=	cpp #${CC} -E
 C2=	${ENVIRON_BASE}/lib/c2
 LD=	ld
@@ -378,13 +379,14 @@ DEPENDS=  #-MD
 INCLUDES= -nostdinc -I. -I../.. -I../../root_fs -I$(SOURCE_DIR)/sys
 ALLOPTS= ${INCLUDES} ${IDENT} -DKERNEL
 LINTOPTS=${ALLOPTS} ${VOLATILE_LINT}
+GCC2FLAGS = #--ffreestanding --fno-builtin --fno-builtin-function
 
 #
 #  Common C-compilation flags
 #
 COPTS_P=${DEPENDS} ${ALLOPTS}
-COPTS=	${COPTS_P}
-CFLAGS=	-O ${COPTS}
+COPTS=	${COPTS_P} ${GCC2FLAGS}
+CFLAGS=	-g -O ${COPTS}
 
 #
 #  Common assembly flags
@@ -766,7 +768,7 @@ CFILES=\
 	$(SOURCE_DIR)/i386/kdb/sym.c \
 	$(SOURCE_DIR)/i386/kdb/tbls.c \
 	$(SOURCE_DIR)/i386/kdb/utls.c \
-	$(SOURCE_DIR)/i386/btptes.c \
+	$(SOURCE_DIR)/i386/btptes.s \
 	$(SOURCE_DIR)/i386/clock.c \
 	$(SOURCE_DIR)/i386/fpsup.c \
 	$(SOURCE_DIR)/i386/i386_init.c \
@@ -957,7 +959,7 @@ locore.o: assym.s locore.s ${LOCORE_HEADS}
 	| sed -e 's/_ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
 	a386 -o $*.o $*.i
-	rm locore.tmp locore.i 
+#	rm locore.tmp locore.i 
 
 ###############################################################################
 #END	Machine dependent Makefile fragment for the i386
@@ -1007,6 +1009,17 @@ mb_start.o:
 #	@chmod 755 a.out
 #	-${SWAPSYS}
 	@-mv a.out $*.sys
+	@echo high_start is located at
+	@-nm vmunix.sys | grep  high_start
+#	@-strip --strip-all vmunix.sys -o vmunix.stripped
+	@-strip --strip-debug \
+      --keep-symbol=_boottype \
+      --keep-symbol=_cnvmem \
+      --keep-symbol=_extmem \
+      --keep-symbol=_loadpt \
+      --keep-symbol=_mb_magic \
+      --keep-symbol=_mb_info vmunix.sys -o vmunix.stripped
+	@-cp vmunix.stripped ../../iso/boot/vmunix
 
 
 
@@ -1236,9 +1249,14 @@ cmu_syscalls.o: $(SOURCE_DIR)/bsd/cmu_syscalls.c
 
 
 
+# GCC 2 or higher injects this ___main when it sees a main, but we want to be freestanding
 
 init_main.o: $(SOURCE_DIR)/bsd/init_main.c
-	${C_RULE_1A}$(SOURCE_DIR)/bsd/${C_RULE_1B}
+	$(CC) -S  -nostdinc -I. -I../.. -I../../root_fs -I../../sys -DCMU -DINET -DMACH -DAT386 -DCMUCS -DKERNEL  -fno-function-cse ../../bsd/init_main.c -o init_main.s
+	grep -v 'call ___main' init_main.s > init_main.tmp
+	a386 init_main.tmp -o init_main.o
+	@-rm init_main.tmp init_main.s
+#	${C_RULE_1A}$(SOURCE_DIR)/bsd/${C_RULE_1B}
 
 
 
@@ -2251,7 +2269,8 @@ utls.o: $(SOURCE_DIR)/i386/kdb/utls.c
 
 
 
-btptes.o: $(SOURCE_DIR)/i386/btptes.c
+btptes.o: $(SOURCE_DIR)/i386/btptes.s
+#	a386 $(SOURCE_DIR)/i386/btptes.s -o btptes.o
 	${C_RULE_1A}$(SOURCE_DIR)/i386/${C_RULE_1B}
 
 
@@ -2496,7 +2515,8 @@ if_3c501.o: $(SOURCE_DIR)/i386at/if_3c501.c
 
 
 if_pc586.o: $(SOURCE_DIR)/i386at/if_pc586.c
-	${C_RULE_1A_D}${VOLATILE}$(SOURCE_DIR)/i386at/${C_RULE_1B_D}; \
+	gcc -c -O  -nostdinc -I. -I../.. -I../../root_fs -I../../sys -DCMU -DINET -DMACH -DAT386 -DCMUCS -DKERNEL  -fno-function-cse $(SOURCE_DIR)/i386at/if_pc586.c
+#	${C_RULE_1A_D}${VOLATILE}$(SOURCE_DIR)/i386at/${C_RULE_1B_D}
 
 
 

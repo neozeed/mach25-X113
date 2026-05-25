@@ -26,6 +26,11 @@ SECTIONS
 
 .data : AT(PHYS + (ADDR(.data) - VIRT)) {
     . = ALIGN(4096);
+    _kpde = .;
+    *(.data.kpde)
+    . += 16384;		/*  4 PT pages */
+
+    . = ALIGN(4096);
     *(.data*)
 } :data
     _edata = .;

@@ -81,7 +81,9 @@
 #else	wheeze
 
 #define ALIGN 2
+//a.out
 #define EXT(x) _/**/x
+//elf
 #define	LCL(x)	x
 
 #if OLD_ASM

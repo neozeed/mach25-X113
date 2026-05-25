@@ -218,9 +218,30 @@ struct	isa_driver	hddriver = {
 hdprobe(ctlr)
 struct isa_ctlr *ctlr;
 {
+#if 0
 	int port_status = (int)ctlr->ctlr_addr + (PORT_STATUS-PORT_DATA);
 	u_char stat = inb(port_status);
+#else
+    int port_status  = (int)ctlr->ctlr_addr + (PORT_STATUS - PORT_DATA);
+    int port_ctrl    = (int)ctlr->ctlr_addr + (FIXED_DISK_REG - PORT_DATA);
+    int port_drvhead = (int)ctlr->ctlr_addr + (PORT_DRIVE_HEADREGISTER - PORT_DATA);
+    u_char stat;
+    int i;
 
+    /* Select drive 0 - required before status register responds */
+    outb(port_drvhead, 0xa0);   /* drive 0, head 0 */
+
+    /* Short delay after drive select */
+    for (i = 0; i < 10000; i++) inb(port_ctrl);
+
+    /* Poll for READY */
+    for (i = 0; i < PATIENCE; i++) {
+        stat = inb(port_status);
+        if (stat == 0xff) return 0;      /* floating bus, no controller */
+        if (stat & STAT_BUSY) continue;  /* busy, keep waiting */
+        if (stat & STAT_READY) break;
+    }
+#endif
 	if ((stat & STAT_READY) == STAT_READY) {
 		take_ctlr_irq(ctlr);
 		printf("hdc%d: port = %x, spl = %d, pic = %d.\n",
@@ -228,6 +249,7 @@ struct isa_ctlr *ctlr;
 		return 1;
 	} else
 		return 0;
+
 }
 
 
