@@ -1,6 +1,7 @@
 my goal is cross building Mach from a Win32/elf tool chain.
 
-Currently TSS/threads are broken:
+<img width="902" height="540" alt="image" src="https://github.com/user-attachments/assets/1d98fcd3-3c64-4d07-9bdc-022a7b7a0c34" />
+Just booted into single user mode!
 
 loading vmunix.sys
 ld -o a.out -e _pstart btptes.o tables.o  locore.o cmu_syscalls.o init_main.o 
