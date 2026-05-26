@@ -143,6 +143,14 @@ char *system_name;
 
 i386_init()
 {
+/*
+ *	bzero can't be called at this time since the pmap
+ *	system is not initialized yet
+ *
+ *	bzero((caddr_t)&edata,(unsigned)(&end - &edata));
+ */
+ 	bclear((caddr_t)&edata,(unsigned)(&end - &edata));
+	
 #ifdef	iPSC2
 	system_name = "iPSC2";
         /* Get nxinfo before it is wiped out by the stack */
@@ -167,14 +175,6 @@ i386_init()
 	 *	memory yet.
 	 */
 	set_cpu_number();
-
-/*
- *	bzero can't be called at this time since the pmap
- *	system is not initialized yet
- *
- *	bzero((caddr_t)&edata,(unsigned)(&end - &edata));
- */
- 	bclear((caddr_t)&edata,(unsigned)(&end - &edata));
 
 /*
  * Initialize the pic prior to any possible call to an spl.
