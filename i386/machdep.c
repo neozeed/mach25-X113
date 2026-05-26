@@ -363,6 +363,8 @@ startup(firstaddr)
 			bufpages += atop(mem_size / 20);
 		if (mem_size > 0x800000)
 			bufpages += atop(mem_size / 15);
+		if (mem_size > 0x800000)
+			bufpages=512;
 	}
 	if (nbuf == 0) {
 		if ((nbuf = bufpages) < 16)
