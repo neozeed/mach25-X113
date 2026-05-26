@@ -1,6 +1,7 @@
 my goal is cross building Mach from a Win32/elf tool chain.
 
-<img width="902" height="540" alt="image" src="https://github.com/user-attachments/assets/1d98fcd3-3c64-4d07-9bdc-022a7b7a0c34" />
+<img width="902" height="540" alt="image" src="https://github.com/user-attachments/assets/b98135a0-61cc-4b0b-8684-022785d9739d" />
+
 Just booted into single user mode!
 
 loading vmunix.sys
