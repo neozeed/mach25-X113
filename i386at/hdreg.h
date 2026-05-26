@@ -103,6 +103,14 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #define CMD_DIAGNOSE				0x090
 #define CMD_SETPARAMETERS			0x091
 
+#define CMD_IDENTIFY        0xec
+#define CMD_PACKET_IDENTIFY 0xa1
+
+#define ATAPI_SIG_SC        0x01
+#define ATAPI_SIG_SN        0x01
+#define ATAPI_SIG_CL        0x14
+#define ATAPI_SIG_CH        0xeb
+
 #define	ERROR_BBD				0x80
 #define ERROR_ECC				0x40
 #define ERROR_ID				0x10
@@ -124,7 +132,7 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #define FMTBAD		( ('H' <<8) | 2)
 #define BAD_BLK		0x80			/* needed for V_VERIFY */
 
-#define NDRIVES 2
+#define NDRIVES 4
 #define SECSIZE 512
 #define uchar	unsigned char
 #define uint	unsigned int

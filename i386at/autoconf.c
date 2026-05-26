@@ -189,6 +189,10 @@ struct	isa_ctlr	HdCtlrs[] = {
 	 */
 	{&hddriver,	 0,    0, (caddr_t)0x1f0,	 SPLHD, 14, hdintrs,
 				  (caddr_t)0x1f0,  8},
+#if NHD > 2
+	{&hddriver,	 1,    0, (caddr_t)0x170,	 SPLHD, 15, hdintrs,
+				  (caddr_t)0x170,  8},
+#endif
 };
 #endif	NHD > 0
 
@@ -221,6 +225,12 @@ struct	isa_dev	Devs[] = {
 					(caddr_t)0x1f0, 8, 0, 0, &HdCtlrs[0]},
 	{&hddriver,  1, 0, 1, 0, (caddr_t)0x118, SPLHD, 14, 1, 0, hdintrs,
 					(caddr_t)0x1f0, 8, 0, 0, &HdCtlrs[0]},
+	#if NHD > 2
+	{&hddriver, 2, 1, 0, 0, (caddr_t)0x104, SPLHD, 15, 2, 0, hdintrs,
+					(caddr_t)0x170, 8, 0, 0, &HdCtlrs[1]},
+	{&hddriver, 3, 1, 1, 0, (caddr_t)0x118, SPLHD, 15, 3, 0, hdintrs,
+					(caddr_t)0x170, 8, 0, 0, &HdCtlrs[1]},
+	#endif
 #endif NHD > 0
 
 #if NAHA > 0

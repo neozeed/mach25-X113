@@ -166,6 +166,32 @@ typedef long paddr_t;
 #define CMOS_DATA	0x71	/* I/O port address for CMOS ram data */
 #define HDTBL		0x12	/* byte offset of the disk type in CMOS ram */
 
+/*
+ * Use ATA LBA28 task-file addressing for normal read/write I/O.
+ *
+ * The old driver always decomposes a block number into CHS and puts
+ * cylinder/head/sector into the task-file registers.  That works only
+ * while the fake disk geometry can describe the requested block.
+ *
+ * Setting the LBA bit in the drive/head register makes the same READ
+ * and WRITE commands interpret sector/cylinder/head as a 28-bit LBA:
+ *
+ *   sector        = LBA bits  0..7
+ *   cylinder low  = LBA bits  8..15
+ *   cylinder high = LBA bits 16..23
+ *   drive/head    = 0xe0 | drive | LBA bits 24..27
+ *
+ * This gets us beyond the old CHS wall without changing the buffer or
+ * interrupt path.  LBA28 tops out at 0x0fffffff sectors, i.e. about
+ * 128GiB / 137GB with 512 byte sectors.
+ */
+#define HD_LBA		0x40
+#define HD_LBA28_MAX	0x0fffffff
+#define CMD_IDENTIFY	0xec
+
+int hd_use_lba = 1;	/* set to 0 to force original CHS behaviour */
+
+
 #ifndef	NULL
 #define NULL	0
 #endif
@@ -198,12 +224,120 @@ typedef struct {
 hdisk_t	hdparams[NDRIVES];	
 hdisk_t rlparams[NDRIVES];
 
+/* Total 28-bit LBA sectors reported by ATA IDENTIFY, if available. */
+unsigned long hdlbasize[NDRIVES];
+
 int ndrives = 1;
 
 int domapping = 0;	/* handle bad block mapping or not */
 
 unsigned hddebug = 0;
 int	reset_requested = 0;
+
+/*
+ * IDE controller helpers.
+ *
+ * The original driver was effectively single-controller: most of the
+ * transfer path used absolute 0x1f0/0x3f6 task-file ports, and the ATA
+ * drive-select bit was derived from the global Mach unit number.  With
+ * two IDE controllers the global units are:
+ *
+ *   hd0 = primary master      dev_slave 0
+ *   hd1 = primary slave       dev_slave 1
+ *   hd2 = secondary master    dev_slave 0
+ *   hd3 = secondary slave     dev_slave 1
+ *
+ * So the controller base must come from the attached isa_ctlr, and the
+ * ATA drive-select bit must come from dev_slave, not from unit number.
+ */
+hd_ctlr_base(unit)
+int unit;
+{
+	if (unit >= 0 && unit < NDRIVES && hdinfo[unit] && hdinfo[unit]->dev_mi)
+		return (int)hdinfo[unit]->dev_mi->ctlr_addr;
+	return (int)PORT_DATA;
+}
+
+hdport(unit, port)
+int unit, port;
+{
+	return hd_ctlr_base(unit) + (port - PORT_DATA);
+}
+
+hd_slave_bit(unit)
+int unit;
+{
+	if (unit >= 0 && unit < NDRIVES && hdinfo[unit])
+		return hdinfo[unit]->dev_slave & 1;
+	return unit & 1;
+}
+
+hd_same_ctlr(unit1, unit2)
+int unit1, unit2;
+{
+	if (unit1 < 0 || unit1 >= NDRIVES || unit2 < 0 || unit2 >= NDRIVES)
+		return 0;
+	if (!hdinfo[unit1] || !hdinfo[unit2])
+		return 0;
+	return hdinfo[unit1]->dev_mi == hdinfo[unit2]->dev_mi;
+}
+
+hd_is_ata_disk(unit)
+int unit;
+{
+        int i;
+        unsigned char s, sc, sn, cl, ch;
+
+        waitcontroller(unit);
+
+        outb(hdport(unit, PORT_DRIVE_HEADREGISTER),
+             FIXEDBITS | (hd_slave_bit(unit) << 4));
+
+        for (i = 0; i < 10000; i++)
+                NOP_DELAY;
+
+        waitcontroller(unit);
+
+        /*
+         * Check ATAPI signature registers.  A QEMU IDE CD-ROM will usually
+         * present 01 01 14 eb after reset/select.
+         */
+        sc = inb(hdport(unit, PORT_NSECTOR));
+        sn = inb(hdport(unit, PORT_SECTOR));
+        cl = inb(hdport(unit, PORT_CYLINDERLOWBYTE));
+        ch = inb(hdport(unit, PORT_CYLINDERHIBYTE));
+
+        if (sc == ATAPI_SIG_SC && sn == ATAPI_SIG_SN &&
+            cl == ATAPI_SIG_CL && ch == ATAPI_SIG_CH) {
+                return 0;
+        }
+
+        /*
+         * Try ATA IDENTIFY.  If this is ATAPI, command 0xec often aborts.
+         */
+        outb(hdport(unit, PORT_COMMAND), CMD_IDENTIFY);
+
+        for (i = 0; i < PATIENCE; i++) {
+                s = inb(hdport(unit, PORT_STATUS));
+
+                if (s & STAT_ERROR) {
+                        sc = inb(hdport(unit, PORT_NSECTOR));
+                        sn = inb(hdport(unit, PORT_SECTOR));
+                        cl = inb(hdport(unit, PORT_CYLINDERLOWBYTE));
+                        ch = inb(hdport(unit, PORT_CYLINDERHIBYTE));
+
+                        if (cl == ATAPI_SIG_CL && ch == ATAPI_SIG_CH)
+                                return 0;
+
+                        return 0;
+                }
+
+                if ((s & STAT_DATAREQUEST) && !(s & STAT_BUSY))
+                        return 1;
+        }
+
+        return 0;
+}
 
 int hdstrategy(), hdminphys(), hdrawio();
 int hdprobe(), hdslave(), hdattach();
@@ -264,15 +398,60 @@ struct isa_ctlr *ctlr;
  */
 
 hdslave(dev)
+struct isa_dev *dev;
+{
+        int unit = dev->dev_unit;
+
+        /*
+         * Temporarily record this so hdport()/hd_slave_bit() can work
+         * during slave probe, before hdattach().
+         */
+        hdinfo[unit] = dev;
+
+        if (!hd_is_ata_disk(unit)) {
+                printf("hd%d: not an ATA disk, ignored. (controller %d, slave %d)\n",
+                        unit, dev->dev_ctlr, dev->dev_slave);
+                hdinfo[unit] = 0;
+                return 0;
+        }
+
+        return 1;
+}
+
+old_hdslave(dev)
 struct isa_dev		*dev;
 {
-	int slave = dev->dev_slave;
-	uchar	*bios_magic = (uchar *)(0xc0000475);
+	int slave = dev->dev_slave & 1;
+	int base, port_status, port_ctrl, port_drvhead;
+	u_char stat;
+	int i;
 
-	if (*bios_magic >= 1 + slave)
-		return(1);
+	/*
+	 * Do not use the BIOS drive-count byte here.  It only describes the
+	 * BIOS-visible primary disks and makes a secondary controller look like
+	 * another copy of hd0/hd1.  Probe the selected ATA device on this
+	 * device's controller instead.
+	 */
+	base = (int)dev->dev_mi->ctlr_addr;
+	port_status  = base + (PORT_STATUS - PORT_DATA);
+	port_ctrl    = base + (FIXED_DISK_REG - PORT_DATA);
+	port_drvhead = base + (PORT_DRIVE_HEADREGISTER - PORT_DATA);
 
-	return(0);
+	outb(port_drvhead, FIXEDBITS | (slave << 4));
+	for (i = 0; i < 10000; i++)
+		stat = inb(port_ctrl);
+
+	for (i = 0; i < PATIENCE; i++) {
+		stat = inb(port_status);
+		if (stat == 0xff)
+			return(0);
+		if ((stat & STAT_BUSY) == 0)
+			break;
+	}
+
+	if (stat == 0 || (stat & STAT_BUSY))
+		return(0);
+	return(1);
 }
 
 /*
@@ -284,16 +463,12 @@ struct isa_dev		*dev;
  *
  */
 
-hdattach(dev)
-struct	isa_dev	*dev;
+hd_bios_params(unit, dev)
+int unit;
+struct isa_dev *dev;
 {
-	int	unit = dev->dev_unit;
 	unsigned long n;
 	unsigned char *tbl;
-
-	hdinfo[unit] = dev;
-
-	ndrives = (ndrives >= unit + 1) ? ndrives : unit + 1;
 
 	n = *(unsigned long *)phystokv(dev->dev_addr);
 	tbl = (unsigned char *)(phystokv((n&0xffff) + ((n >> 12)&0xffff0) ));
@@ -309,15 +484,131 @@ struct	isa_dev	*dev;
 	hdparams[unit].landzone |= *tbl++ << 8;
 	hdparams[unit].nsecpertrack = *tbl;
 	rlparams[unit] = hdparams[unit];
+}
+
+hd_fake_params(unit)
+int unit;
+{
+	/*
+	 * Last-ditch geometry for an IDE disk that probes but does not answer
+	 * IDENTIFY.  Real I/O still uses LBA if hd_use_lba is enabled; this is
+	 * mostly for labels, sorting, old ioctls, and boot-time printouts.
+	 */
+	hdparams[unit].ncylinders = 1024;
+	hdparams[unit].nheads = 16;
+	hdparams[unit].nsecpertrack = 63;
+	hdparams[unit].precomp = 0xffff;
+	hdparams[unit].landzone = hdparams[unit].ncylinders;
+	rlparams[unit] = hdparams[unit];
+}
+
+hd_identify(unit)
+int unit;
+{
+	unsigned short id[256];
+	unsigned long nsect;
+	unsigned long cyls;
+	unsigned int n;
+	u_char stat;
+
+	/* Select this drive on this controller. */
+	waitcontroller(unit);
+	outb(hdport(unit, PORT_DRIVE_HEADREGISTER),
+	     FIXEDBITS | (hd_slave_bit(unit) << 4));
+	for (n = 0; n < 10000; n++)
+		NOP_DELAY
+
+	waitcontroller(unit);
+	outb(hdport(unit, PORT_COMMAND), CMD_IDENTIFY);
+
+	for (n = 0; n < PATIENCE; n++) {
+		stat = inb(hdport(unit, PORT_STATUS));
+		if (stat == 0xff || stat == 0)
+			return 0;
+		if (stat & STAT_ERROR)
+			return 0;
+		if ((stat & STAT_DATAREQUEST) && !(stat & STAT_BUSY))
+			break;
+		NOP_DELAY
+	}
+	if (n == PATIENCE)
+		return 0;
+
+	linw(hdport(unit, PORT_DATA), id, 256);
+
+	hdparams[unit].ncylinders = id[1];
+	hdparams[unit].nheads = id[3];
+	hdparams[unit].nsecpertrack = id[6];
+
+	/* LBA28 total sectors, ATA IDENTIFY words 60/61. */
+	nsect = ((unsigned long)id[61] << 16) | id[60];
+	hdlbasize[unit] = nsect;
+
+	/* Some emulated disks report useless CHS.  Keep 16/63 as a safe base. */
+	if (hdparams[unit].nheads == 0 || hdparams[unit].nheads > 16)
+		hdparams[unit].nheads = 16;
+	if (hdparams[unit].nsecpertrack == 0 || hdparams[unit].nsecpertrack > 63)
+		hdparams[unit].nsecpertrack = 63;
+
+	if (nsect != 0) {
+		cyls = nsect /
+		       ((unsigned long)hdparams[unit].nheads *
+			(unsigned long)hdparams[unit].nsecpertrack);
+		if (cyls == 0)
+			cyls = 1;
+		if (cyls > 65535)
+			cyls = 65535;
+		hdparams[unit].ncylinders = cyls;
+	}
+
+	hdparams[unit].precomp = 0xffff;
+	hdparams[unit].landzone = hdparams[unit].ncylinders;
+	rlparams[unit] = hdparams[unit];
+	return 1;
+}
+
+hdattach(dev)
+struct	isa_dev	*dev;
+{
+	int	unit = dev->dev_unit;
+	unsigned long meg;
+
+	hdinfo[unit] = dev;
+	hdlbasize[unit] = 0;
+
+	ndrives = (ndrives >= unit + 1) ? ndrives : unit + 1;
+
+	/*
+	 * Best path: ask the drive itself.  QEMU does not provide useful BIOS
+	 * fixed-disk parameter mappings for secondary IDE disks, so using the
+	 * old 0x104/0x118 table for hd2/hd3 makes them look like hd0/hd1.
+	 */
+	if (!hd_identify(unit)) {
+		if (dev->dev_ctlr == 0)
+			hd_bios_params(unit, dev);
+		else
+			hd_fake_params(unit);
+	}
+
 	printf("hd%d:  stat = %x, spl = %d, pic = %d. (controller %d, slave %d)\n",
 		unit, dev->dev_addr, dev->dev_spl, dev->dev_pic,
 		dev->dev_ctlr, dev->dev_slave);
-	printf("hd%d:   %dMeg, cyls %d, heads %d, secs %d, precomp %d, landzone %d\n",
-		unit,
-		hdparams[unit].ncylinders*hdparams[unit].nheads*hdparams[unit].nsecpertrack*
-		 512/1000000,
+
+	if (hdlbasize[unit])
+		meg = hdlbasize[unit] / 1953;
+	else
+		meg = ((unsigned long)hdparams[unit].ncylinders *
+		       (unsigned long)hdparams[unit].nheads *
+		       (unsigned long)hdparams[unit].nsecpertrack) / 1953;
+
+	printf("hd%d:   %dMeg, cyls %d, heads %d, secs %d, precomp %d, landzone %d",
+		unit, (int)meg,
 		hdparams[unit].ncylinders, hdparams[unit].nheads, hdparams[unit].nsecpertrack,
 		hdparams[unit].precomp, hdparams[unit].landzone);
+	if (hdlbasize[unit])
+		printf(", lba %d", (int)hdlbasize[unit]);
+	printf("\n");
+
 	hdunit[unit].b_active = 0;
 	hdunit[unit].b_actf = hdunit[unit].b_actl = 0;
 	setcontroller(unit);
@@ -753,8 +1044,8 @@ hdintr()
 			printf("hd: false interrupt\n");
 		return;
 	}
-	waitcontroller();
-	hh.status = inb(PORT_STATUS);	
+	waitcontroller(hh.curdrive);
+	hh.status = inb(hdport(hh.curdrive, PORT_STATUS));	
 
 	dp = &hdunit[hh.curdrive];
 	bp = dp->b_actf;
@@ -781,7 +1072,7 @@ hdintr()
 	if (hh.status & STAT_ERROR) {
 		if (hd_print_error) {
 			 printf("hdintr: state error %x, error = %x\n",
-			 	hh.status, inb(PORT_ERROR));
+			 	hh.status, inb(hdport(hh.curdrive, PORT_ERROR)));
 			 printf("hdintr: state error. block %d, count %d, total %d\n",
 			 	hh.physblock, hh.blockcount, hh.blocktotal);
 			 printf("hdintr: state error. cyl %d, head %d, sector %d\n",
@@ -810,10 +1101,10 @@ hdintr()
 
 	if (bp->b_flags & B_READ) {
 if (hddebug & 4) printf("hd.hdintr(): reading a sector into 0x%x\n", hh.rw_addr);
-		while ((inb(PORT_STATUS) & STAT_DATAREQUEST) == 0) {
+		while ((inb(hdport(hh.curdrive, PORT_STATUS)) & STAT_DATAREQUEST) == 0) {
 NOP_DELAY
 		}
-		linw(PORT_DATA, hh.rw_addr, SECSIZE/2); 
+		linw(hdport(hh.curdrive, PORT_DATA), hh.rw_addr, SECSIZE/2); 
 	}
 
 	if ( ++hh.blockcount == hh.blocktotal ) {
@@ -832,11 +1123,11 @@ if (hddebug & 1) printf("]");
 			start_rw(bp->b_flags & B_READ);
 		else if (!(bp->b_flags & B_READ)) {
 			/* Load sector into controller for next write */
-			waitcontroller();
-			while ((inb(PORT_STATUS) & STAT_DATAREQUEST) == 0 ) {
+			waitcontroller(hh.curdrive);
+			while ((inb(hdport(hh.curdrive, PORT_STATUS)) & STAT_DATAREQUEST) == 0 ) {
 NOP_DELAY
 			}
-			loutw(PORT_DATA, hh.rw_addr, SECSIZE/2);
+			loutw(hdport(hh.curdrive, PORT_DATA), hh.rw_addr, SECSIZE/2);
 		}
 	}
 }
@@ -879,15 +1170,16 @@ struct buf *bp;
 	}
 	else {
 		/* lets do a recalibration */
-		waitcontroller();
+		waitcontroller(hh.curdrive);
 		hh.restore_request = 1;
-		outb(PORT_PRECOMP, hdparams[hh.curdrive].precomp >>2);
-		outb(PORT_NSECTOR, hdparams[hh.curdrive].nsecpertrack);
-		outb(PORT_SECTOR, hh.sector);
-		outb(PORT_CYLINDERLOWBYTE, hh.cylinder & 0xff );
-		outb(PORT_CYLINDERHIBYTE,  (hh.cylinder >> 8) & 0xff );
-		outb(PORT_DRIVE_HEADREGISTER, 0);
-		outb(PORT_COMMAND, CMD_RESTORE);
+		outb(hdport(hh.curdrive, PORT_PRECOMP), hdparams[hh.curdrive].precomp >>2);
+		outb(hdport(hh.curdrive, PORT_NSECTOR), hdparams[hh.curdrive].nsecpertrack);
+		outb(hdport(hh.curdrive, PORT_SECTOR), hh.sector);
+		outb(hdport(hh.curdrive, PORT_CYLINDERLOWBYTE), hh.cylinder & 0xff );
+		outb(hdport(hh.curdrive, PORT_CYLINDERHIBYTE),  (hh.cylinder >> 8) & 0xff );
+		outb(hdport(hh.curdrive, PORT_DRIVE_HEADREGISTER),
+		     FIXEDBITS | (hd_slave_bit(hh.curdrive) << 4));
+		outb(hdport(hh.curdrive, PORT_COMMAND), CMD_RESTORE);
 	}
 }
 
@@ -897,8 +1189,9 @@ unsigned char	unit;
 	unsigned char *c_p;
 	unsigned int n, m;
 	char *pt1, *pt2;
-	struct boot_record *boot_record_p;
+	struct ipart *ipart_p;
 	struct evtoc *evp;
+	unsigned long unix_size;
 
 	bp1= geteblk(SECSIZE);		/* for evtoc */
 	bp2 = geteblk(SECSIZE);		/* for alt_info */
@@ -908,7 +1201,10 @@ unsigned char	unit;
 	*/
 	partition_struct[unit][PART_DISK].p_flag = V_OPEN|V_VALID;
 	partition_struct[unit][PART_DISK].p_start = 0; 
-	partition_struct[unit][PART_DISK].p_size = hdparams[unit].ncylinders *
+	if (hdlbasize[unit])
+		partition_struct[unit][PART_DISK].p_size = hdlbasize[unit];
+	else
+		partition_struct[unit][PART_DISK].p_size = hdparams[unit].ncylinders *
 		   hdparams[unit].nheads * hdparams[unit].nsecpertrack;
 
 	/* get active partition */
@@ -929,20 +1225,30 @@ unsigned char	unit;
 		return;
 	}
 	c_p = (unsigned char *)(paddr(bp1)) + 446;
-	boot_record_p = (struct boot_record *)(c_p);
-	for (n=0; n<4; n++, boot_record_p++)
-		if (boot_record_p->boot_ind == 0x80) break;
+	ipart_p = (struct ipart *)(c_p);
+	for (n=0; n<FD_NUMPART; n++, ipart_p++)
+		if (ipart_p->bootid == ACTIVE) break;
 
-	if (boot_record_p->boot_ind != 0x80) {
+	if (ipart_p->bootid != ACTIVE) {
 		printf("hd: no active partition on drive %d\n", unit);
 		return;
 	}
-	hh.start_of_unix[unit] = boot_record_p->rel_sect;	
+	hh.start_of_unix[unit] = ipart_p->relsect;
+	unix_size = ipart_p->numsect;
 	
 	/* set correct partition information */
 
-	partition_struct[unit][PART_DISK].p_start = boot_record_p->rel_sect; 
-	partition_struct[unit][PART_DISK].p_size = hdparams[unit].ncylinders *
+	partition_struct[unit][PART_DISK].p_start = hh.start_of_unix[unit];
+	if (unix_size)
+		partition_struct[unit][PART_DISK].p_size = unix_size;
+	else if (hdlbasize[unit])
+		partition_struct[unit][PART_DISK].p_size = hdlbasize[unit] -
+		   hh.start_of_unix[unit];
+	else if (hdlbasize[unit])
+		partition_struct[unit][PART_DISK].p_size = hdlbasize[unit] -
+		   hh.start_of_unix[unit];
+	else
+		partition_struct[unit][PART_DISK].p_size = hdparams[unit].ncylinders *
 		   hdparams[unit].nheads * hdparams[unit].nsecpertrack - 
 		   hh.start_of_unix[unit];
 
@@ -974,7 +1280,10 @@ unsigned char	unit;
 	printf("cyl = %d, heads = %d, sectors = %d\n",
 		evp->cyls, evp->tracks, evp->sectors);
 #else	OOPS
-	partition_struct[unit][PART_DISK].p_size = hdparams[unit].ncylinders *
+	if (unix_size)
+		partition_struct[unit][PART_DISK].p_size = unix_size;
+	else
+		partition_struct[unit][PART_DISK].p_size = hdparams[unit].ncylinders *
 		   hdparams[unit].nheads * hdparams[unit].nsecpertrack - 
 		   hh.start_of_unix[unit];
 	setcontroller(unit);
@@ -1036,80 +1345,123 @@ format_command()
 	unsigned int track;
 		
 	if ( hdparams[hh.curdrive].nheads > 8)
-		outb(FIXED_DISK_REG, MORETHAN8HEADS);
+		outb(hdport(hh.curdrive, FIXED_DISK_REG), MORETHAN8HEADS);
 	else
-		outb(FIXED_DISK_REG, EIGHTHEADSORLESS);
+		outb(hdport(hh.curdrive, FIXED_DISK_REG), EIGHTHEADSORLESS);
 	
 	if (hh.block_is_bad)
 		track = hh.substitutetrack;
 	else
 		track = hh.format_track;
 	hh.head     = track   % hdparams[hh.curdrive].nheads; 
-	hh.head = hh.head | (hh.curdrive << 4) | FIXEDBITS;
+	hh.head = hh.head | (hd_slave_bit(hh.curdrive) << 4) | FIXEDBITS;
 	hh.cylinder = track   / hdparams[hh.curdrive].nheads;
 
-	waitcontroller();
-	outb(PORT_PRECOMP, hdparams[hh.curdrive].precomp >>2);
-	outb(PORT_NSECTOR, hdparams[hh.curdrive].nsecpertrack);
+	waitcontroller(hh.curdrive);
+	outb(hdport(hh.curdrive, PORT_PRECOMP), hdparams[hh.curdrive].precomp >>2);
+	outb(hdport(hh.curdrive, PORT_NSECTOR), hdparams[hh.curdrive].nsecpertrack);
 	/* Western Digital 1010 and 1005 want the following line */
-	outb(PORT_SECTOR, 36);
-	outb(PORT_CYLINDERLOWBYTE, hh.cylinder & 0xff );
-	outb(PORT_CYLINDERHIBYTE,  (hh.cylinder >> 8) & 0xff );
-	outb(PORT_DRIVE_HEADREGISTER, hh.head);
-	outb(PORT_COMMAND, CMD_FORMAT);
-	waitcontroller();
-	loutw(PORT_DATA, hh.interleave_tab, SECSIZE/2);
+	outb(hdport(hh.curdrive, PORT_SECTOR), 36);
+	outb(hdport(hh.curdrive, PORT_CYLINDERLOWBYTE), hh.cylinder & 0xff );
+	outb(hdport(hh.curdrive, PORT_CYLINDERHIBYTE),  (hh.cylinder >> 8) & 0xff );
+	outb(hdport(hh.curdrive, PORT_DRIVE_HEADREGISTER), hh.head);
+	outb(hdport(hh.curdrive, PORT_COMMAND), CMD_FORMAT);
+	waitcontroller(hh.curdrive);
+	loutw(hdport(hh.curdrive, PORT_DATA), hh.interleave_tab, SECSIZE/2);
 }
 
 reset_controller()
 {
-	int	i;
+	int	i, unit;
 
-	outb(0x3F6, 4);
+	unit = hh.curdrive;
+	outb(hdport(unit, FIXED_DISK_REG), 4);
 	for(i = 0; i < 10000; i++);
-	outb(0x3F6, 0);
-	waitcontroller();
-	if(1 != (i = inb(0x1F1)))
-		printf("reset_controller(): error code %d\n", i);
-	setcontroller(0);
-	if(ndrives > 1)
-		setcontroller(1);
+	outb(hdport(unit, FIXED_DISK_REG), 0);
+	waitcontroller(unit);
+	if(1 != (i = inb(hdport(unit, PORT_ERROR))))
+		printf("reset_controller(): unit %d error code %d\n", unit, i);
+
+	/* Re-issue SET PARAMETERS for drives on the reset controller only. */
+	for (i = 0; i < ndrives; i++)
+		if (hdinfo[i] && hdinfo[i]->dev_alive && hd_same_ctlr(i, unit))
+			setcontroller(i);
 }
 
 setcontroller(unit)
 {
 	unsigned char nheads;
 
-	waitcontroller();
+	waitcontroller(unit);
 	nheads = FIXEDBITS | (hdparams[unit].nheads -1);
-	nheads |= (unit << 4);
-	outb(PORT_DRIVE_HEADREGISTER, nheads); 
-	outb(PORT_NSECTOR, hdparams[unit].nsecpertrack);
-	outb(PORT_COMMAND, CMD_SETPARAMETERS);
-	waitcontroller();
+	nheads |= (hd_slave_bit(unit) << 4);
+	outb(hdport(unit, PORT_DRIVE_HEADREGISTER), nheads); 
+	outb(hdport(unit, PORT_NSECTOR), hdparams[unit].nsecpertrack);
+	outb(hdport(unit, PORT_COMMAND), CMD_SETPARAMETERS);
+	waitcontroller(unit);
 }
 
-waitcontroller()
+waitcontroller(unit)
+int unit;
 {
 	unsigned int n;
 
 	for (n = 0; n < PATIENCE; n++) {
-		if ((inb(PORT_STATUS) & STAT_BUSY) == 0)
+		if ((inb(hdport(unit, PORT_STATUS)) & STAT_BUSY) == 0)
 			return;
 NOP_DELAY
 	}
+	printf("hard disk drive: waitcontroller() times out, unit %d, port %x\n",
+		unit, hd_ctlr_base(unit));
 	panic("hard disk drive: waitcontroller() times out");
+}
+
+hd_lba_rw(read, disk_block, xblk)
+int read;
+unsigned long disk_block;
+unsigned int xblk;
+{
+	waitcontroller(hh.curdrive);
+
+	/*
+	 * Keep these filled in for the existing error/debug printouts.
+	 * In LBA mode they are not CHS values; they are the task-file
+	 * bytes that make up the 28-bit LBA.
+	 */
+	hh.sector = disk_block & 0xff;
+	hh.cylinder = (disk_block >> 8) & 0xffff;
+	hh.head = FIXEDBITS | HD_LBA | (hd_slave_bit(hh.curdrive) << 4) |
+		  ((disk_block >> 24) & 0x0f);
+
+	outb(hdport(hh.curdrive, PORT_PRECOMP), 0);
+	outb(hdport(hh.curdrive, PORT_NSECTOR), xblk);
+	outb(hdport(hh.curdrive, PORT_SECTOR), hh.sector);
+	outb(hdport(hh.curdrive, PORT_CYLINDERLOWBYTE), hh.cylinder & 0xff);
+	outb(hdport(hh.curdrive, PORT_CYLINDERHIBYTE), (hh.cylinder >> 8) & 0xff);
+	outb(hdport(hh.curdrive, PORT_DRIVE_HEADREGISTER), hh.head);
+
+	if (read)
+		outb(hdport(hh.curdrive, PORT_COMMAND), CMD_READ);
+	else {
+		outb(hdport(hh.curdrive, PORT_COMMAND), CMD_WRITE);
+		waitcontroller(hh.curdrive);
+		while ((inb(hdport(hh.curdrive, PORT_STATUS)) & STAT_DATAREQUEST) == 0) {
+NOP_DELAY
+		}
+		loutw(hdport(hh.curdrive, PORT_DATA), hh.rw_addr, SECSIZE/2);
+	}
 }
 
 start_rw(read)
 {
-	unsigned int track, disk_block, xblk;
+	unsigned long track, disk_block;
+	unsigned int xblk;
 	struct buf *bp = hdunit[hh.curdrive].b_actf;
 
 	if ( hdparams[hh.curdrive].nheads > 8)
-		outb(FIXED_DISK_REG, MORETHAN8HEADS);
+		outb(hdport(hh.curdrive, FIXED_DISK_REG), MORETHAN8HEADS);
 	else
-		outb(FIXED_DISK_REG, EIGHTHEADSORLESS);
+		outb(hdport(hh.curdrive, FIXED_DISK_REG), EIGHTHEADSORLESS);
 
 	disk_block = hh.physblock;
 
@@ -1125,31 +1477,38 @@ start_rw(read)
 		}
 	}
 
+	if (hd_use_lba &&
+	    disk_block <= HD_LBA28_MAX &&
+	    (disk_block + xblk - 1) <= HD_LBA28_MAX) {
+		hd_lba_rw(read, disk_block, xblk);
+		return;
+	}
+
 	/* disk is formatted starting sector 1, not sector 0 */
 	hh.sector = (disk_block % hdparams[hh.curdrive].nsecpertrack) + 1;
 
 	track = disk_block / hdparams[hh.curdrive].nsecpertrack;
 
 	hh.head = track % hdparams[hh.curdrive].nheads; 
-	hh.head = hh.head | (hh.curdrive << 4) | FIXEDBITS;
+	hh.head = hh.head | (hd_slave_bit(hh.curdrive) << 4) | FIXEDBITS;
 	hh.cylinder = track / hdparams[hh.curdrive].nheads;
 
-	waitcontroller();
-	outb(PORT_PRECOMP, hdparams[hh.curdrive].precomp >>2);
-	outb(PORT_NSECTOR, xblk);
-	outb(PORT_SECTOR, hh.sector);
-	outb(PORT_CYLINDERLOWBYTE, hh.cylinder & 0xff );
-	outb(PORT_CYLINDERHIBYTE,  (hh.cylinder >> 8) & 0xff );
-	outb(PORT_DRIVE_HEADREGISTER, hh.head );
+	waitcontroller(hh.curdrive);
+	outb(hdport(hh.curdrive, PORT_PRECOMP), hdparams[hh.curdrive].precomp >>2);
+	outb(hdport(hh.curdrive, PORT_NSECTOR), xblk);
+	outb(hdport(hh.curdrive, PORT_SECTOR), hh.sector);
+	outb(hdport(hh.curdrive, PORT_CYLINDERLOWBYTE), hh.cylinder & 0xff );
+	outb(hdport(hh.curdrive, PORT_CYLINDERHIBYTE),  (hh.cylinder >> 8) & 0xff );
+	outb(hdport(hh.curdrive, PORT_DRIVE_HEADREGISTER), hh.head );
 	if(read) 
-		outb(PORT_COMMAND, CMD_READ);
+		outb(hdport(hh.curdrive, PORT_COMMAND), CMD_READ);
  	else {
- 		outb(PORT_COMMAND, CMD_WRITE); 
-		waitcontroller();
-		while ((inb(PORT_STATUS) & STAT_DATAREQUEST) == 0) {
+ 		outb(hdport(hh.curdrive, PORT_COMMAND), CMD_WRITE); 
+		waitcontroller(hh.curdrive);
+		while ((inb(hdport(hh.curdrive, PORT_STATUS)) & STAT_DATAREQUEST) == 0) {
 NOP_DELAY
 		}
-		loutw(PORT_DATA, hh.rw_addr, SECSIZE/2);
+		loutw(hdport(hh.curdrive, PORT_DATA), hh.rw_addr, SECSIZE/2);
 	}
 
 }
