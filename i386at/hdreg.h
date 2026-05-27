@@ -124,6 +124,8 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #define PATIENCE	3000000		/* how long to wait for controller */
 #define PARTITION(z)	(minor(z) & 0x0f)
 #define UNIT(z)		(  (minor(z) >> 4)   & 0x01)
+/*#define UNIT(dev)        ((minor(dev) >> 4) & 0x0f)
+#define PARTITION(dev)   (minor(dev) & 0x0f)*/
 #define GOINGUP	1
 #define GOINGDOWN 0
 

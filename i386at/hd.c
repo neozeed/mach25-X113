@@ -341,9 +341,12 @@ int unit;
 
 int hdstrategy(), hdminphys(), hdrawio();
 int hdprobe(), hdslave(), hdattach();
-int hdintr();
+int hdintr(); int hdintr2();
 
 int (*hdintrs[])() = {hdintr, 0};
+#if NHD>2
+int (*hdintrs2[])() = {hdintr2, 0};
+#endif
 
 struct	isa_driver	hddriver = {
 	hdprobe, hdslave, hdattach, "hd", 0, 0, 0};
@@ -352,10 +355,6 @@ struct	isa_driver	hddriver = {
 hdprobe(ctlr)
 struct isa_ctlr *ctlr;
 {
-#if 0
-	int port_status = (int)ctlr->ctlr_addr + (PORT_STATUS-PORT_DATA);
-	u_char stat = inb(port_status);
-#else
     int port_status  = (int)ctlr->ctlr_addr + (PORT_STATUS - PORT_DATA);
     int port_ctrl    = (int)ctlr->ctlr_addr + (FIXED_DISK_REG - PORT_DATA);
     int port_drvhead = (int)ctlr->ctlr_addr + (PORT_DRIVE_HEADREGISTER - PORT_DATA);
@@ -375,7 +374,6 @@ struct isa_ctlr *ctlr;
         if (stat & STAT_BUSY) continue;  /* busy, keep waiting */
         if (stat & STAT_READY) break;
     }
-#endif
 	if ((stat & STAT_READY) == STAT_READY) {
 		take_ctlr_irq(ctlr);
 		printf("hdc%d: port = %x, spl = %d, pic = %d.\n",
@@ -418,41 +416,6 @@ struct isa_dev *dev;
         return 1;
 }
 
-old_hdslave(dev)
-struct isa_dev		*dev;
-{
-	int slave = dev->dev_slave & 1;
-	int base, port_status, port_ctrl, port_drvhead;
-	u_char stat;
-	int i;
-
-	/*
-	 * Do not use the BIOS drive-count byte here.  It only describes the
-	 * BIOS-visible primary disks and makes a secondary controller look like
-	 * another copy of hd0/hd1.  Probe the selected ATA device on this
-	 * device's controller instead.
-	 */
-	base = (int)dev->dev_mi->ctlr_addr;
-	port_status  = base + (PORT_STATUS - PORT_DATA);
-	port_ctrl    = base + (FIXED_DISK_REG - PORT_DATA);
-	port_drvhead = base + (PORT_DRIVE_HEADREGISTER - PORT_DATA);
-
-	outb(port_drvhead, FIXEDBITS | (slave << 4));
-	for (i = 0; i < 10000; i++)
-		stat = inb(port_ctrl);
-
-	for (i = 0; i < PATIENCE; i++) {
-		stat = inb(port_status);
-		if (stat == 0xff)
-			return(0);
-		if ((stat & STAT_BUSY) == 0)
-			break;
-	}
-
-	if (stat == 0 || (stat & STAT_BUSY))
-		return(0);
-	return(1);
-}
 
 /*
  * hdattach:
@@ -1036,6 +999,104 @@ if (hddebug & 1) printf("[");
 
 int hd_print_error = 0;
 hdintr()
+{
+	register struct buf *bp, *dp;
+
+	if (!hh.controller_busy) {
+		if (hd_print_error)
+			printf("hd: false interrupt\n");
+		return;
+	}
+	waitcontroller(hh.curdrive);
+	hh.status = inb(hdport(hh.curdrive, PORT_STATUS));	
+
+	dp = &hdunit[hh.curdrive];
+	bp = dp->b_actf;
+
+	if (hh.restore_request == 1) { /* Restore command has completed */
+		hh.restore_request = 0;
+		if (hh.status & STAT_ERROR)
+			hderror(bp);
+		else {
+			if (bp != NULL)	
+				start_rw(bp->b_flags & B_READ);
+			else {
+				if (hh.format_request)	
+					format_command(); 
+			}
+		}
+		return;
+	}
+
+	if (hh.status & STAT_WRITEFAULT) {
+		panic("hd: write fault\n");
+	}
+
+	if (hh.status & STAT_ERROR) {
+		if (hd_print_error) {
+			 printf("hdintr: state error %x, error = %x\n",
+			 	hh.status, inb(hdport(hh.curdrive, PORT_ERROR)));
+			 printf("hdintr: state error. block %d, count %d, total %d\n",
+			 	hh.physblock, hh.blockcount, hh.blocktotal);
+			 printf("hdintr: state error. cyl %d, head %d, sector %d\n",
+			 	hh.cylinder, hh.head, hh.sector);
+
+		}
+		hderror(bp);
+		return;
+	}
+
+	if (hh.format_request) {
+		printf("hdintr: format request\n");
+		wakeup(&hh.interleave_tab[0]);
+		return;
+	}
+
+	if (hh.status & STAT_ECC) 
+		printf("hd: ECC soft error fixed, unit %d, partition %d, physical block %d \n",
+			hh.curdrive, PARTITION(bp->b_dev), hh.physblock);
+
+	if (bp == NULL ) {
+		/* there should be a read/write buffer queued at this point */
+		printf("hdintr: no bp buffer to read or write\n");
+		return;	
+	}
+
+	if (bp->b_flags & B_READ) {
+if (hddebug & 4) printf("hd.hdintr(): reading a sector into 0x%x\n", hh.rw_addr);
+		while ((inb(hdport(hh.curdrive, PORT_STATUS)) & STAT_DATAREQUEST) == 0) {
+NOP_DELAY
+		}
+		linw(hdport(hh.curdrive, PORT_DATA), hh.rw_addr, SECSIZE/2); 
+	}
+
+	if ( ++hh.blockcount == hh.blocktotal ) {
+		dp->b_actf = bp->av_forw;
+		bp->b_resid = 0;
+		iodone(bp);
+		hh.controller_busy = 0;
+
+if (hddebug & 1) printf("]");
+
+		hdstart();
+	} else {
+		hh.rw_addr += SECSIZE;
+		hh.physblock++;
+		if (hh.single_mode)
+			start_rw(bp->b_flags & B_READ);
+		else if (!(bp->b_flags & B_READ)) {
+			/* Load sector into controller for next write */
+			waitcontroller(hh.curdrive);
+			while ((inb(hdport(hh.curdrive, PORT_STATUS)) & STAT_DATAREQUEST) == 0 ) {
+NOP_DELAY
+			}
+			loutw(hdport(hh.curdrive, PORT_DATA), hh.rw_addr, SECSIZE/2);
+		}
+	}
+}
+
+/* same as above */
+hdintr2()
 {
 	register struct buf *bp, *dp;
 

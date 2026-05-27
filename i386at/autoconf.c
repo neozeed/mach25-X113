@@ -113,6 +113,9 @@ int cold = 0;
 #if NHD > 0
 extern	struct	isa_driver	hddriver;
 extern int			(*hdintrs[])();
+#if NHD > 2
+extern int			(*hdintrs2[])();
+#endif
 #define	SPLHD SPL5
 #endif NHD
 
@@ -190,7 +193,7 @@ struct	isa_ctlr	HdCtlrs[] = {
 	{&hddriver,	 0,    0, (caddr_t)0x1f0,	 SPLHD, 14, hdintrs,
 				  (caddr_t)0x1f0,  8},
 #if NHD > 2
-	{&hddriver,	 1,    0, (caddr_t)0x170,	 SPLHD, 15, hdintrs,
+	{&hddriver,	 1,    0, (caddr_t)0x170,	 SPLHD, 15, hdintrs2,
 				  (caddr_t)0x170,  8},
 #endif
 };
