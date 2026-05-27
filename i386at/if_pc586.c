@@ -258,6 +258,8 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 #include	<pc586.h>
 
+#if NPC586 > 0
+
 #ifdef	MACH_KERNEL
 #include	<kern/time_out.h>
 #include	<device/device_types.h>
@@ -2184,3 +2186,4 @@ u_short *countp;
 	return;
 }
 #endif	MACH_KERNEL
+#endif NPC586

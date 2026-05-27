@@ -252,7 +252,7 @@ DATA(intrlocr0)
 #define EXCEPTION(trp_name,number)					\
 Entry(trp_name)				;				\
 		pushl	$0x00		;				\
-		pushl	$number		;				\
+		pushl	$ number		;				\
 		jmp	trap_handler
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -263,7 +263,7 @@ Entry(trp_name)				;				\
  
 #define EXCEPTERR(err_name,number)					\
 Entry(err_name)				;				\
-		pushl	$number		;				\
+		pushl	$ number		;				\
 		jmp	trap_handler
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -274,7 +274,7 @@ Entry(err_name)				;				\
 #define INTERRUPT(int_name,number)					\
 Entry(int_name)				;				\
 		pushl	$0x00		;				\
-		pushl	$number		;				\
+		pushl	$ number		;				\
 		jmp	interrupt
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -299,7 +299,7 @@ Entry(int_name)				;				\
 
 #define INTERRUPT_RETURN		 				\
 		movl	Times(CS,4)(%ebp), %eax	;			\
-		testw	$IS_LDT_SEL,%ax		;			\
+		testw	$ IS_LDT_SEL,%ax		;			\
 		jnz	user_return		;			\
 		movl	Times(EFL,4)(%ebp), %eax;			\
 		btl	$17,%eax		;			\
@@ -315,7 +315,7 @@ KERNEL_RETURN
 #define SET_PIC_MASK							\
 		movl	EXT(master_ocw),%edx	;			\
 		OUTB				;			\
-		addw	$SIZE_PIC,%dx		;			\
+		addw	$ SIZE_PIC,%dx		;			\
 		movb	%ah,%al			;			\
 		OUTB
 
@@ -622,7 +622,7 @@ trap_handler:
 /	2. Now we need to establish ourselves as running in Kernel
 /	mode by selecting the Kernel's data space.
 
-	movw	$KDSSEL,%ax		/  4 / %ds can't be affected directly.
+	movw	$ KDSSEL,%ax		/  4 / %ds can't be affected directly.
 	movw	%ax,%ds			/  2 /
 	movw	%ax,%es			/  2 /
 	movl	%esp, %ebp		/  2 / save a copy of stack pointer.
@@ -644,7 +644,7 @@ trap_handler:
 	btl	$17,%eax
 	jc	v86_trap_handler
 	movl	Times(CS,4)(%ebp), %eax	/  2 /	
-	testw	$IS_LDT_SEL,%ax		/  2 /
+	testw	$ IS_LDT_SEL,%ax		/  2 /
 	jnz	user_trap_handler	/ ** /
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -756,7 +756,7 @@ Entry(system_call)
 /	3. Now we change to the kernel data space, as we are now in
 /	kernel mod and copy the current stack pointer.
 
-	movw	$KDSSEL,%ax		/  2 /
+	movw	$ KDSSEL,%ax		/  2 /
 	movw	%ax,%ds			/  2 /
 	movw	%ax,%es			/  2 /
 	movl	%esp,%ebp		/  2 /
@@ -789,7 +789,7 @@ MACH_sys_call:
 	jge	call_MACH_trap		/ ** / this is a -ve number inverted
 
 mach_failure:
-	movl	$KERN_FAILURE,%eax	/  2 /
+	movl	$ KERN_FAILURE,%eax	/  2 /
 	jmp	user_return		/ ** /
 
 
@@ -921,7 +921,7 @@ interrupt:
 / 	1. Now that we are in Kernel mode we must select the Kernel data area, 
 /	and save a copy of the current stack pointer.
 
-	movw	$KDSSEL,%ax		/  2 /
+	movw	$ KDSSEL,%ax		/  2 /
 	movw	%ax,%ds			/  2 /
 	movw	%ax,%es			/  2 /
 	movl	%esp,%ebp		/  2 /
@@ -944,7 +944,7 @@ interrupt:
 	OUTB				/  4 /
 
 	movw	EXT(PICS_OCW2),%ax	/  2 / EOI for slave.
-	addw	$SIZE_PIC,%dx		/  2 /
+	addw	$ SIZE_PIC,%dx		/  2 /
 	OUTB				/  4 /
 
 / 	2. Now we must change the interrupt priority level, with interrupts 
@@ -960,7 +960,7 @@ interrupt:
 	je	int_check
 	cmpl	$15, %edi			/ IRQ15
 	jne	int_ok
-	addw	$SIZE_PIC,%dx			/  2 /
+	addw	$ SIZE_PIC,%dx			/  2 /
 int_check:
 	INB					/ read ISR
 	testb	$0x80, %al			/ return if IS7 is off
@@ -968,7 +968,7 @@ int_check:
 
 int_ok:
 	movzbl	EXT(intpri)(%edi), %eax	/  4 / intpri[int#]  
-	cmpl	$SPLHI, %eax		/  2 /
+	cmpl	$ SPLHI, %eax		/  2 /
 	je	clock_int_handler	/ ** / 
 	cmpl	EXT(curr_ipl), %eax	/  2 / 
 	je	no_spl			/ ** /
@@ -988,7 +988,7 @@ no_spl:
 	sti
 /	pushl	%edi			/  2 / push int# as int handler arg
 	pushl	EXT(iunit)(,%edi,4)	/  2 / push unit# as int handler arg
-	movl	$EXT(ivect), %ebx	/  2 / get base of ivect[] array
+	movl	$ EXT(ivect), %ebx	/  2 / get base of ivect[] array
 	call	*(%ebx, %edi, 4)	/  4 / *ivect[int#]()
 	addl	$0x04, %esp		/  2 / on return remove int# from stack
 	cli				/  3 / disable interrupts
@@ -1103,42 +1103,42 @@ DATA(csplw)	.long 0
 
 Entry(spl0)
 SPL_INC(spl0)
-	movl    $SPL0, %eax
+	movl    $ SPL0, %eax
 	jmp	set_spl
 
 Entry(splsoftclock)
 Entry(spl1)
 SPL_INC(spl1)
-	movl    $SPL1, %eax
+	movl    $ SPL1, %eax
 	jmp	set_spl
 
 Entry(spl2)
 SPL_INC(spl2)
-	movl    $SPL2, %eax
+	movl    $ SPL2, %eax
 	jmp	set_spl
 
 Entry(spl3)
 SPL_INC(spl3)
-	movl    $SPL3, %eax
+	movl    $ SPL3, %eax
 	jmp	set_spl
 
 Entry(splnet)
 Entry(splhdw)
 Entry(spl4)
 SPL_INC(spl4)
-	movl    $SPL4, %eax
+	movl    $ SPL4, %eax
 	jmp	set_spl
 
 Entry(splbio)
 Entry(spl5)
 SPL_INC(spl5)
-	movl    $SPL5, %eax
+	movl    $ SPL5, %eax
 	jmp	set_spl
 
 Entry(spltty)
 Entry(spl6)
 SPL_INC(spl6)
-	movl    $SPL6, %eax
+	movl    $ SPL6, %eax
 	jmp	set_spl
 
 Entry(splimp)
@@ -1151,7 +1151,7 @@ Entry(spl7)
 SPL_INC(spl7)
 	cli				/  3 / disable interrupts
 	movl	EXT(curr_ipl),%eax	/  4 /
-	movl	$IPLHI, EXT(curr_ipl)	/  2 /
+	movl	$ IPLHI, EXT(curr_ipl)	/  2 /
 	ret				/ 10 /
 /					------
 /					  19
@@ -1193,7 +1193,7 @@ SPL_INC(splx)
 	cmpl	$0x00,%eax		/  2 / check if  < 0
 	jl	splxpanic		/  3 /
 
-	cmpl	$SPLHI,%eax		/  2 / check if too high
+	cmpl	$ SPLHI,%eax		/  2 / check if too high
 	ja	splxpanic		/  3 /
 /					------
 /					  14
@@ -1215,7 +1215,7 @@ set_spl:
 	movl	EXT(curr_ipl), %edx	/ 4 / get OLD ipl level
 	pushl	%edx			/ 2 / save old level for return
 	movl	%eax,EXT(curr_ipl)	/ 4 / set NEW ipl level
-	cmpl	$SPLHI, %eax		/  2 / if SPLHI
+	cmpl	$ SPLHI, %eax		/  2 / if SPLHI
 	je	spl_intoff		/  3 / return with interrupt off
 	movw	EXT(pic_mask)(,%eax,2), %ax / 5 /
 	cmpw	EXT(curr_pic_mask),%ax 	/ 5 /
@@ -1237,7 +1237,7 @@ iret_spl:
 	movl	%eax,EXT(curr_ipl)	/ 4 / set NEW ipl level
 / SPLHI is not possible, for we can not be returning to splhi since
 / we'd never be interrupted.
-/	cmpl	$SPLHI, %eax		/  2 / if SPLHI
+/	cmpl	$ SPLHI, %eax		/  2 / if SPLHI
 /	je	1f
 	movw	EXT(pic_mask)(,%eax,2), %ax / 5 /
 	cmpw	EXT(curr_pic_mask),%ax 	/ 5 /
@@ -1998,7 +1998,7 @@ ENTRY(sig_clean)
 	pushfl				/  2 /
 	popl	%eax			/  2 /
 	movl    %eax, Times(EFL,4)(%esp) /  4 /
-	movw	$KDSSEL, %ax		/  2 /
+	movw	$ KDSSEL, %ax		/  2 /
 	movw	%ax, %ds		/  2 /
 	movw	%ax, %es		/  2 /
 	movl	%esp, %ebp		/  2 /
@@ -2028,7 +2028,7 @@ ENTRY(sig_clean)
 /	pushl	%esi			/  2 /
 /	pushl	%ebx			/  2 /
 /	movl	%cr3,%esi		/  4 /
-/	addl	$KVBASE,%esi		/  2 / kpde
+/	addl	$ KVBASE,%esi		/  2 / kpde
 /	movl	8(%ebp),%eax		/  4 / first address
 /	movl	12(%ebp),%ebx		/  4 / length
 /	addl	%eax,%ebx		/  2 /
@@ -2041,7 +2041,7 @@ ENTRY(sig_clean)
 /	movl	(%esi,%ecx,4),%edx	/  4 / pd entry
 /	testb	$1,%dl			/  2 / VALID
 /	jz	kaccerr			/ ** /
-/	addl	$KVBASE,%edx		/  2 /
+/	addl	$ KVBASE,%edx		/  2 /
 /	andl	$-1!I386_OFFMASK,%edx	/  4 /
 /	movl	%eax,%ecx		/  2 /
 /	andl	$PTEMASK,%ecx		/  2 /

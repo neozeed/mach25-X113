@@ -110,17 +110,17 @@ Entry(pstart)
 #ifndef	iPSC2
 	/ Retrieve the parameters passed from boot
 	pop	%eax
-	mov	$EXT(boottype), %ebx
+	mov	$ EXT(boottype), %ebx
 	and	$MASK, %ebx
 	mov	%eax, (%ebx)
 
 	pop	%eax
-	mov	$EXT(extmem), %ebx
+	mov	$ EXT(extmem), %ebx
 	and	$MASK, %ebx
 	mov	%eax, (%ebx)
 
 	pop	%eax
-	mov	$EXT(cnvmem), %ebx
+	mov	$ EXT(cnvmem), %ebx
 	and	$MASK, %ebx
 	mov	%eax, (%ebx)
 #endif	iPSC2
@@ -131,7 +131,7 @@ Entry(pstart)
 #else	OLD_BOOT
 	pop	%eax
 #endif	OLD_BOOT
-	mov	$EXT(boothowto), %ebx
+	mov	$ EXT(boothowto), %ebx
 	and	$MASK, %ebx
 	mov	%eax, (%ebx)
 
@@ -140,7 +140,7 @@ Entry(pstart)
 /*	leal	EXT(end), %eax*/
 	pop	%eax
 	orl	$KV, %eax
-	mov	$EXT(esym), %ebx
+	mov	$ EXT(esym), %ebx
 	and	$MASK, %ebx
 	mov	%eax, (%ebx)
 #endif	wheeze
@@ -155,64 +155,64 @@ Entry(pstart)
 	OUTB
 
 	/ Rearrange GDT
-	mov	$EXT(gdt), %eax
-	and	$MASK, %eax
+	mov	$ EXT(gdt), %eax
+	and	$ MASK, %eax
 
-	mov	$GDTLIM, %ecx
+	mov	$ GDTLIM, %ecx
 
-	mov	$GDTdscr, %ebx
-	and	$MASK, %ebx
+	mov	$ GDTdscr, %ebx
+	and	$ MASK, %ebx
 	movw	%cx, (%ebx)
 
 	call	munge_table
 
 	/ Rearrange IDT
-	mov	$EXT(idt), %eax
-	and	$MASK, %eax
+	mov	$ EXT(idt), %eax
+	and	$ MASK, %eax
 
-	mov	$IDTLIM, %ecx
+	mov	$ IDTLIM, %ecx
 
 	call	munge_table
 
 	/ Rearrange call gate for system call (scall_dscr)
-	mov	$EXT(scall_dscr), %eax
-	and	$MASK, %eax
+	mov	$ EXT(scall_dscr), %eax
+	and	$ MASK, %eax
 
 	mov	$1, %ecx
 
 	call	munge_table
 
 	/ Rearrange call gate for signal return  (sigret_dscr)
-	mov	$EXT(sigret_dscr), %eax
-	and	$MASK, %eax
+	mov	$ EXT(sigret_dscr), %eax
+	and	$ MASK, %eax
 
 	mov	$1, %ecx
 
 	call	munge_table
 
 	/ Fix up the 1st, 3 giga and last entries in the page directory
-	mov	$EXT(kpde), %ebx
-	and	$MASK, %ebx
+	mov	$ EXT(kpde), %ebx
+	and	$ MASK, %ebx
 
-	mov	$EXT(kpte), %eax	
+	mov	$ EXT(kpte), %eax	
 	and	$0xffff000, %eax
 	or	$0x1, %eax
 
 	mov	%eax, (%ebx)
 	mov	%eax, 3072(%ebx)	/ 3 giga -- C0000000
 
-	mov	$EXT(kpde), %edx
-	and	$MASK, %edx
+	mov	$ EXT(kpde), %edx
+	and	$ MASK, %edx
 
 	/ Load IDTR
-	mov	$IDTdscr, %eax
-	and	$MASK, %eax
+	mov	$ IDTdscr, %eax
+	and	$ MASK, %eax
 
 	lidt	(%eax)
 
 	/ Load GDTR
-	mov	$GDTdscr, %eax
-	and	$MASK, %eax
+	mov	$ GDTdscr, %eax
+	and	$ MASK, %eax
 
 	lgdt	(%eax)
 
@@ -221,7 +221,7 @@ Entry(pstart)
 
 	/ turn PG on
 	mov	%cr0, %eax
-	or	$PAGEBIT, %eax
+	or	$ PAGEBIT, %eax
 	mov	%eax, %cr0
 
 /* ----------------------------------------------------------------
@@ -231,7 +231,7 @@ Entry(pstart)
  * reachable until we land in high_start.
  * ---------------------------------------------------------------- */
 
-	ljmp    $KCODE, $high_start
+	ljmp    $ KCODE, $high_start
 
 /* -----------------------------------------------------------------------
  * high_start
@@ -249,12 +249,13 @@ high_start:
         mov     %ax, %gs
 
         /* Set up kernel stack explicitly - do NOT trust TSS or GRUB */
-        mov     $EXT(intstack), %esp
+        mov     $ EXT(intstack), %esp
         add     $4092, %esp
         xor     %ebp, %ebp
 
 
-	ljmp	$KTSSSEL, $0x0
+	ljmp	$ KTSSSEL, $0x0
+	/ljmp	$0x150, $0x0
 
 / *********************************************************************
 /	munge_table:

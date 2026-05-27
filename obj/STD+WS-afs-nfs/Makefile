@@ -353,10 +353,22 @@ default: all
 #  Compilation components
 #
 #CC=	gcc
+#CPP=	${CC} -E
+
+#CC=	i586-unknown-linux-gcc
+#CPP=	i586-unknown-linux-cpp
+#LD=	i586-unknown-linux-ld
+#AS=	i586-unknown-linux-as
+
+
 CC=	gcc-258_old
-CPP=	cpp #${CC} -E
-C2=	${ENVIRON_BASE}/lib/c2
+CPP=	cpp
 LD=	ld
+AS=	a386
+
+
+
+#C2=	${ENVIRON_BASE}/lib/c2
 MD=	false #${ENVIRON_BASE}/usr/mach/bin/md
 ENCODE=	uuencode
 DECODE=	uudecode
@@ -386,7 +398,7 @@ GCC2FLAGS = #--ffreestanding --fno-builtin --fno-builtin-function
 #
 COPTS_P=${DEPENDS} ${ALLOPTS}
 COPTS=	${COPTS_P} ${GCC2FLAGS}
-CFLAGS=	-O2 -g  ${COPTS}
+CFLAGS=	-O2 -g ${COPTS}
 
 #
 #  Common assembly flags
@@ -953,12 +965,13 @@ locore.s: ${LOCORE_DEPS}
 	cp /dev/null ioconf.c
 
 locore.o: assym.s locore.s ${LOCORE_HEADS}
-	cat assym.s ../../machine/start.s  ../../machine/locore.s ../../machine/cswitch.s >locore.tmp
-	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER -DLOCORE locore.tmp \
-	| sed -e 's/ _ / _/g' | sed -e 's/	_ / _/g' \
+	cat assym.s ../../i386/start.s  ../../i386/locore.s ../../i386/cswitch.s >locore.tmp
+	$(CPP) ${DEPENDS} ${INCLUDES} ${IDENT} -D__linux__ -DKERNEL -DASSEMBLER -DLOCORE locore.tmp \
+	| sed -e 's/ _   / _/g' \
 	| sed -e 's/_ / _/g' \
-	| sed -e 's/ :/:/g' > $*.i
-	a386 -o $*.o $*.i
+	| sed -e 's/ _ / _/g' \
+	| sed -e 's/ :/:/g' >> $*.i
+	$(AS) -o $*.o $*.i
 #	rm locore.tmp locore.i 
 
 ###############################################################################
@@ -983,13 +996,13 @@ C_RULE_4=
 #  kernel link using this default rule.
 #
 mb_header.o:
-	cpp ../../i386at\mb_header.s mb_header.i
-	a386 mb_header.i -o mb_header.o
+	$(CPP) ../../i386at\mb_header.s mb_header.i
+	$(AS) mb_header.i -o mb_header.o
 	@rm -f mb_header.i
 
 mb_start.o:
-	cpp -I../.. ../../i386at\mb_start.s -o mb_start.i
-	a386 mb_start.i -o mb_start.o
+	$(CPP) -I../.. ../../i386at\mb_start.s -o mb_start.i
+	$(AS) mb_start.i -o mb_start.o
 	@rm -f mb_start.i
 
 .swap.sys:
@@ -1254,7 +1267,7 @@ cmu_syscalls.o: $(SOURCE_DIR)/bsd/cmu_syscalls.c
 init_main.o: $(SOURCE_DIR)/bsd/init_main.c
 	$(CC) -S  -nostdinc -I. -I../.. -I../../root_fs -I../../sys -DCMU -DINET -DMACH -DAT386 -DCMUCS -DKERNEL  -fno-function-cse ../../bsd/init_main.c -o init_main.s
 	grep -v 'call ___main' init_main.s > init_main.tmp
-	a386 init_main.tmp -o init_main.o
+	$(AS) init_main.tmp -o init_main.o
 	@-rm init_main.tmp init_main.s
 #	${C_RULE_1A}$(SOURCE_DIR)/bsd/${C_RULE_1B}
 
@@ -2283,11 +2296,13 @@ clock.o: $(SOURCE_DIR)/i386/clock.c
 
 
 copy_user.o: $(SOURCE_DIR)/i386/copy_user.s
-	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
+	$(CPP) ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
+	| sed -e 's/ _ / _/g' \
 	| sed -e 's/ _ / _/g' \
 	| sed -e 's/_ / _/g' \
+	| sed -e 's/ _ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
-	a386 -o $*.o $*.i
+	$(AS) -o $*.o $*.i
 
 fpsup.o: $(SOURCE_DIR)/i386/fpsup.c
 	${C_RULE_1A}$(SOURCE_DIR)/i386/${C_RULE_1B}
@@ -2296,10 +2311,12 @@ fpsup.o: $(SOURCE_DIR)/i386/fpsup.c
 
 
 FPU_start.o: $(SOURCE_DIR)/i386/fp/FPU_start.s
-	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
+	$(CPP) ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
 	| sed -e 's/ _ / _/g' \
-	| SED -e 's/ :/:/g' > $*.i
-	a386 -o $*.o $*.i
+	| sed -e 's/ _ / _/g' \
+	| sed -e 's/ _ / _/g' \
+	| sed -e 's/ :/:/g' > $*.i
+	$(AS) -o $*.o $*.i
 
 arith.o: $(SOURCE_DIR)/i386/fp/arith.b
 	${B_RULE_1A}$(SOURCE_DIR)/i386/fp/${B_RULE_1B}
@@ -2335,16 +2352,20 @@ trans.o: $(SOURCE_DIR)/i386/fp/trans.b
 	${B_RULE_1A}$(SOURCE_DIR)/i386/fp/${B_RULE_1B}
 
 FPU_end.o: $(SOURCE_DIR)/i386/fp/FPU_end.s
-	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
-	| sed -e 's/ _ / _/g' \
+	$(CPP) ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
+        | sed -e 's/ _ / _/g' \
+        | sed -e 's/ _ / _/g' \
+        | sed -e 's/ _ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
-	a386 -o $*.o $*.i
+	$(AS) -o $*.o $*.i
 
 gcc.o: $(SOURCE_DIR)/i386/gcc.s
-	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
-	| sed -e 's/ _ / _/g' \
+	$(CPP) ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
+        | sed -e 's/ _ / _/g' \
+        | sed -e 's/ _ / _/g' \
+        | sed -e 's/ _ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
-	a386 -o $*.o $*.i
+	$(AS) -o $*.o $*.i
 
 i386_init.o: $(SOURCE_DIR)/i386/i386_init.c
 	${C_RULE_1A}$(SOURCE_DIR)/i386/${C_RULE_1B}
@@ -2389,10 +2410,12 @@ mem.o: $(SOURCE_DIR)/i386/mem.c
 
 
 ntoh.o: $(SOURCE_DIR)/i386/ntoh.s
-	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
-	| sed -e 's/ _ / _/g' \
+	$(CPP) ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
+        | sed -e 's/ _ / _/g' \
+        | sed -e 's/ _ / _/g' \
+        | sed -e 's/ _ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
-	a386 -o $*.o $*.i
+	$(AS) -o $*.o $*.i
 
 pcb.o: $(SOURCE_DIR)/i386/pcb.c
 	${C_RULE_1A}$(SOURCE_DIR)/i386/${C_RULE_1B}
@@ -2419,11 +2442,14 @@ sys_machdep.o: $(SOURCE_DIR)/i386/sys_machdep.c
 
 
 str.o: $(SOURCE_DIR)/i386/str.s
-	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
-	| sed -e 's/ _ / _/g' \
-	| sed -e 's/_ / _/g' \
+	$(CPP) ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
+        | sed -e 's/ _ / _/g' \
+        | sed -e 's/ _ / _/g' \
+        | sed -e 's/ _ / _/g' \
+        | sed -e 's/_ /_/g' \
+        | sed -e 's/_ panic/_panic/g' \
 	| sed -e 's/ :/:/g' > $*.i
-	a386 -o $*.o $*.i
+	$(AS) -o $*.o $*.i
 
 tables.o: $(SOURCE_DIR)/i386/tables.c
 	${C_RULE_1A}$(SOURCE_DIR)/i386/${C_RULE_1B}
@@ -2515,7 +2541,9 @@ if_3c501.o: $(SOURCE_DIR)/i386at/if_3c501.c
 
 
 if_pc586.o: $(SOURCE_DIR)/i386at/if_pc586.c
-	gcc -c -O  -nostdinc -I. -I../.. -I../../root_fs -I../../sys -DCMU -DINET -DMACH -DAT386 -DCMUCS -DKERNEL  -fno-function-cse $(SOURCE_DIR)/i386at/if_pc586.c
+	${C_RULE_1A_D}$(SOURCE_DIR)/i386at/${C_RULE_1B_D};
+# disbled
+#	gcc -c -O  -nostdinc -I. -I../.. -I../../root_fs -I../../sys -DCMU -DINET -DMACH -DAT386 -DCMUCS -DKERNEL  -fno-function-cse $(SOURCE_DIR)/i386at/if_pc586.c
 #	${C_RULE_1A_D}${VOLATILE}$(SOURCE_DIR)/i386at/${C_RULE_1B_D}
 
 
@@ -2533,10 +2561,12 @@ kd.o: $(SOURCE_DIR)/i386at/kd.c
 
 
 kdasm.o: $(SOURCE_DIR)/i386at/kdasm.s
-	cpp ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
+	$(CPP) ${DEPENDS} ${INCLUDES} ${IDENT} -DKERNEL -DASSEMBLER $< \
+	| sed -e 's/ _ / _/g' \
+	| sed -e 's/ _ / _/g' \
 	| sed -e 's/ _ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
-	a386 $*.i -o $*.o
+	$(AS) $*.i -o $*.o
 #	${S_RULE_1A}$(SOURCE_DIR)/i386at/${S_RULE_1B}
 
 

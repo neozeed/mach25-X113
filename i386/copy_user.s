@@ -40,7 +40,7 @@
 #define MIN_KERNEL_ADDRESS (0xc0000000)
 
 #define EFAULT_ERROR_FRAME \
-	pushl	%ebp; movl %esp, %ebp; pushl %esi; pushl %edi; pushl $EFAULT; MCOUNT
+	pushl	%ebp; movl %esp, %ebp; pushl %esi; pushl %edi; pushl $ EFAULT; MCOUNT
 
 #define M1_ERROR_FRAME \
 	pushl	%ebp; movl %esp, %ebp; pushl %esi; pushl %edi; pushl $-1; MCOUNT
@@ -75,7 +75,7 @@ ENTRY(ALLOW_FAULT_START)
 	 * that the range not include the kernel space
 	 */
 #define US(ur) \
-	movl	$MIN_KERNEL_ADDRESS, %edx;\
+	movl	$ MIN_KERNEL_ADDRESS, %edx;\
 	cmpl	%edx, ur;\
 	ja	9f;\
 	leal	(ur, %ecx), %eax;\
@@ -83,7 +83,7 @@ ENTRY(ALLOW_FAULT_START)
 	jb	9f;\
 	cmpl	%edx, %eax;\
 	jbe	8f;\
-9:	movl	$EFAULT, %eax;\
+9:	movl	$ EFAULT, %eax;\
 	jmp	3f;\
 8:
 
@@ -182,7 +182,7 @@ Entry(copyout)
 	 * truncates the length to not cross into the kernel
 	 */
 #define UT(ur) \
-	movl	$MIN_KERNEL_ADDRESS, %edx;\
+	movl	$ MIN_KERNEL_ADDRESS, %edx;\
 	cmpl	%edx, ur;\
 	ja	9f;\
 	leal	(ur, %ecx), %eax;\
@@ -193,7 +193,7 @@ Entry(copyout)
 	movl	%edx, %ecx;\
 	subl	ur, %ecx;\
 	jmp	8f;\
-9:	movl	$EFAULT, %eax;\
+9:	movl	$ EFAULT, %eax;\
 	jmp	3f;\
 8:
 /*
@@ -215,7 +215,7 @@ Entry(copystr)
 	orb	%al, %al
 	loopne	0b
 	je	1f
-	movl	$ENOENT, %eax
+	movl	$ ENOENT, %eax
 	jmp	3f
 
 1:	movl	B_ARG3, %eax
@@ -251,7 +251,7 @@ Entry(copyinstr)
 	orb	%al, %al
 	loopne	0b
 	je	1f
-	movl	$ENOENT, %eax
+	movl	$ ENOENT, %eax
 	jmp	3f
 
 1:	movl	B_ARG3, %eax
@@ -293,7 +293,7 @@ Entry(copyoutstr)
 	orb	%al, %al
 	loopne	0b
 	je	1f
-	movl	$ENOENT, %eax
+	movl	$ ENOENT, %eax
 	jmp	3f
 
 1:	movl	B_ARG3, %eax
@@ -314,7 +314,7 @@ Entry(copyoutstr)
 	 * validates x (and the length), both to be < kernel address
 	 */
 #define US4(ur) \
-	movl	$MIN_KERNEL_ADDRESS, %edx;\
+	movl	$ MIN_KERNEL_ADDRESS, %edx;\
 	cmpl	%edx, ur;\
 	ja	9f;\
 	leal	(ur, %ecx), %eax;\

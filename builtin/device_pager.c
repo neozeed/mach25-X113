@@ -319,7 +319,7 @@ kern_return_t memory_object_data_write(memory_object,memory_control_port,offset,
 	memory_object_t memory_object;
 	memory_object_control_t memory_control_port;
 	vm_offset_t offset;
-	/* pointer_t */ int data;
+	unsigned int data;
 	unsigned int dataCnt;
 {
 #if	defined(lint) || defined(hc)
