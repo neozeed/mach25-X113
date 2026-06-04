@@ -1189,7 +1189,7 @@ issig()
 #else	SWITCH_INT
 		switch (u.u_signal[sig]) {
 #endif	SWITCH_INT
-#if	defined(__HIGHC__)
+#if     defined(__HIGHC__) || (__GNUC__ >= 4)
 		case ((int)SIG_DFL):
 #else
 		case SIG_DFL:

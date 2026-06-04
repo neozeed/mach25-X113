@@ -124,8 +124,8 @@ unsigned char ins;
 #ifdef	wheeze
 #else	wheeze
 	if (jmp_flag) {
-		extern int curbyte;
-		extern int dotinc;
+		extern unsigned short curbyte;
+		extern INT dotinc;
 		while (getbyte(), curbyte == 0) ;
 		dotinc--;
 	}

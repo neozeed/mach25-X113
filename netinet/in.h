@@ -210,6 +210,7 @@ struct ip_mreq {
 };
 
 #ifdef	KERNEL
+#include <sys/protosw.h>
 extern	struct domain inetdomain;
 extern	struct protosw inetsw[];
 struct	in_addr in_makeaddr();

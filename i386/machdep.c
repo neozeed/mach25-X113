@@ -1241,6 +1241,7 @@ thread_t th;
 	extern struct fakedesc gdt[];
 	register struct tss386 *tssp;
 	register struct fakedesc *gdtp, *ldtp;
+	caddr_t kvtophys();
 
 #ifndef	NO_U_ADDRESS
 	load_context_data();
