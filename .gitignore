@@ -1,0 +1,18 @@
+
+# grub
+iso/boot/loader
+iso/boot/vmunix
+mach.iso
+
+# loader
+loader/*.o
+loader/loader
+
+# kernel obj
+obj/STD+WS-afs-nfs/*.o
+obj/STD+WS-afs-nfs/*.tmp
+obj/STD+WS-afs-nfs/*.i
+obj/STD+WS-afs-nfs/*.s
+obj/STD+WS-afs-nfs/a.out
+obj/STD+WS-afs-nfs/vmunix*
+
