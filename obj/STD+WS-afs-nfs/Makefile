@@ -981,7 +981,7 @@ locore.o: assym.s locore.s ${LOCORE_HEADS}
 	| sed -e 's/ _ / _/g' \
 	| sed -e 's/ :/:/g' > $*.i
 	$(AS) -o $*.o $*.i
-#	rm locore.tmp locore.i 
+	rm locore.tmp locore.i 
 
 ###############################################################################
 #END	Machine dependent Makefile fragment for the i386
@@ -2462,6 +2462,7 @@ str.o: $(SOURCE_DIR)/i386/str.s
         | sed -e 's/_ panic/_panic/g' \
 	| sed -e 's/ :/:/g' > $*.i
 	$(AS) -o $*.o $*.i
+	-rm -f $*.i
 
 tables.o: $(SOURCE_DIR)/i386/tables.c
 	${C_RULE_1A}$(SOURCE_DIR)/i386/${C_RULE_1B}
