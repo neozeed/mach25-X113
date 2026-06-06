@@ -1,1 +1,1 @@
-#define NHD 4
+#define NHD 2

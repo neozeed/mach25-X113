@@ -355,16 +355,25 @@ default: all
 #CC=	gcc
 #CPP=	${CC} -E
 
-#CC=	i586-unknown-linux-gcc
-#CPP=	i586-unknown-linux-cpp
-#LD=	i586-unknown-linux-ld
-#AS=	i586-unknown-linux-as
+# Linux or OS X
+CC=	/usr/local/i586-linux2/bin/i586-linux-gcc
+CPP=	/usr/local/i586-linux2/lib/gcc-lib/i586-linux/2.8.1/cpp
+LD=	/usr/local/i586-linux2/bin/i586-linux-ld
+AS=	/usr/local/i586-linux2/bin/i586-linux-as-2.8.1
+SIZE=	/usr/local/i586-linux2/bin/i586-linux-size
+STRIP=	/usr/local/i586-linux2/bin/i586-linux-strip
+LINKDEF=	mach.elf.ld
 
 
-CC=	gcc-258_old
-CPP=	cpp
-LD=	ld
-AS=	a386
+#MinGW 32
+# a.out compiler with ELF backend so it prepends _ to every symbol
+#CC=	gcc-258_old
+#CPP=	cpp
+#LD=	ld
+#AS=	a386
+#SIZE=	size
+#STRIP=	strip
+#LINKDEF=	mach.ld
 
 
 
@@ -376,7 +385,7 @@ VOLATILE="-Dvolatile="
 VOLATILE_LINT="-Dvolatile=" 
 FORCE_VOLATILE=
 
-KCC=	${CC}
+KCC=	${CC} -std=gnu89 -Wno-implicit-function-declaration
 KCPP=	${KCC} -E
 
 #
@@ -970,7 +979,7 @@ locore.o: assym.s locore.s ${LOCORE_HEADS}
 	| sed -e 's/ _   / _/g' \
 	| sed -e 's/_ / _/g' \
 	| sed -e 's/ _ / _/g' \
-	| sed -e 's/ :/:/g' >> $*.i
+	| sed -e 's/ :/:/g' > $*.i
 	$(AS) -o $*.o $*.i
 #	rm locore.tmp locore.i 
 
@@ -1015,17 +1024,17 @@ mb_start.o:
 #	a.out
 #	${LD} ${LDFLAGS} -x ${LDOBJS} vers.o $*.swap ${LIBS}
 #	elf
-	${LD} -o a.out -m elf_i386 -T mach.ld ${LDOBJS} vers.o $*.swap ${LIBS}
+	${LD} -o a.out -m elf_i386 -T $(LINKDEF) ${LDOBJS} vers.o $*.swap ${LIBS}
 	@echo rearranging symbols
 #	symorder symbols.sort a.out
-	@size a.out
+	@$(SIZE) a.out
 #	@chmod 755 a.out
 #	-${SWAPSYS}
 	@-mv a.out $*.sys
 	@echo high_start is located at
 	@-nm vmunix.sys | grep  high_start
 #	@-strip --strip-all vmunix.sys -o vmunix.stripped
-	@-strip --strip-debug \
+	@-$(STRIP) --strip-debug \
       --keep-symbol=_boottype \
       --keep-symbol=_cnvmem \
       --keep-symbol=_extmem \
@@ -1091,14 +1100,17 @@ all: ${LOAD}
 genassym.exe: $(SOURCE_DIR)/machine/genassym.c
 	echo compile with native cc
 	uudecode old/genassym.txt
-#	${KCC} -c ${COPTS_P} ${VOLATILE} $(SOURCE_DIR)/machine/genassym.c
+
+genassym: $(SOURCE_DIR)/machine/genassym.c
+	${KCC} -c ${COPTS_P} ${VOLATILE} $(SOURCE_DIR)/machine/genassym.c
 
 assym.s: genassym.exe
-	genassym.exe > assym.s
+#	genassym.exe > assym.s
 #	rm -f genassym.exe
 #	cp old/assym.s .
 #	${KCC} genassym.o
 #	./a.out > assym.s; rm -f a.out
+	uudecode old/assym.txt
 
 locore.o: assym.s ${LOCORE_HEADS}
 

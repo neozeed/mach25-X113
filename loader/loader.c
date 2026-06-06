@@ -75,7 +75,8 @@ struct multiboot_info {
 /* ELF32                                                         */
 /* ------------------------------------------------------------- */
 
-#pragma pack(1)
+/*#pragma pack(1)
+*/
 
 typedef struct {
     uint8_t  e_ident[16];
@@ -127,7 +128,8 @@ typedef struct {
     uint16_t st_shndx;
 } Elf32_Sym;
 
-#pragma pack()
+/*#pragma pack()
+*/
 
 #define PT_LOAD   1
 #define SHT_SYMTAB 2
@@ -281,7 +283,7 @@ static uint32_t make_boottype(uint32_t grub_boot_device)
 /* loader_main                                                   */
 /* ------------------------------------------------------------- */
 
-void loader_main(uint32_t magic, struct multiboot_info *mbi)
+void _loader_main(uint32_t magic, struct multiboot_info *mbi)
 {
     struct multiboot_module *mods;
     Elf32_Ehdr *eh;
